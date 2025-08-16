@@ -1,0 +1,20 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: run-{{WORSKPACE_ID}}-python
+spec:
+  template:
+    spec:
+      containers:
+      - name: python-runner
+        image: python:latest
+        command: ["bash", "-c", "cd /workspace && go run main.go"]
+        volumeMounts:
+        - name: workspace-volume
+          mountPath: /workspace
+      restartPolicy: Never
+      volumes:
+      - name: workspace-volume
+        hostPath:
+          path: /cache/{{WORKSPACE_ID}}
+          type: Directory

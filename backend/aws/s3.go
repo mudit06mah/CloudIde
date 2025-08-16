@@ -20,10 +20,12 @@ func DownloadTemplate( projectType string ) (string, error) {
             prefix = "templates/node/"
         case "python":
             prefix = "templates/python/"
-        case "go":
+        case "golang":
             prefix = "templates/golang/"
         case "cpp":
             prefix = "templates/cpp/"
+        default:
+            return "", fmt.Errorf("unsupported project type: %s", projectType)
     }
     
     cacheDir := os.Getenv("CACHE_DIR")

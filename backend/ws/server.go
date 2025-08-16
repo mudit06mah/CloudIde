@@ -9,6 +9,8 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+var workspaces = make(map[string]string)
+
 
 // initialize ws server
 func StartWebSocketServer() error {

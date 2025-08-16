@@ -1,12 +1,13 @@
 package ws
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
-	"encoding/base64"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/websocket"
@@ -15,6 +16,7 @@ import (
 
 var validate = validator.New()
 var conn *websocket.Conn
+var workspaceId string
 
 type Response struct {
 	Success bool            `json:"success"`
@@ -25,6 +27,22 @@ type Response struct {
 type Message struct {
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
+}
+
+//helper functions:
+func createWorkspaceId(size int) string{
+	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	id := ""
+
+	for i := 0; i < size; i++ {
+		id += string(charset[rand.Intn(len(charset))])
+	}
+
+	if _, exists := workspaces[workspaceId]; exists {
+		createWorkspaceId(size)
+	}
+
+	return id
 }
 
 func sendResponse(success bool, message string, payload json.RawMessage) {
@@ -81,6 +99,10 @@ func messageHandler(con *websocket.Conn, rawMsg []byte) {
 	case "updateFile":
 		handleUpdateFile(msg.Payload)
 
+	default:
+		fmt.Println("Unknown message type:", msg.Type)
+		sendResponse(false, "Unknown message type: "+msg.Type, nil)
+
 	}
 }
 
@@ -103,6 +125,12 @@ func handleCreateProject(payload json.RawMessage) {
 		sendResponse(false, "Validation error: "+err.Error(), nil)
 		return
 	}
+
+	workspaceId = createWorkspaceId(10);
+	workspaces[workspaceId] = data.ProjectType
+	
+
+	os.Setenv("CACHE_DIR", filepath.Join(os.Getenv("CACHE_DIR"), workspaceId));
 
 	_, err = aws.DownloadTemplate(data.ProjectType)
 	if err != nil {
