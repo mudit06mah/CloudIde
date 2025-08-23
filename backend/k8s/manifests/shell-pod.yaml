@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: shell-{{WORKSPACE_ID}}
+  namespace: {{NAMESPACE}}
+  labels:
+    workspace: {{WORKSPACE_ID}}
+    session: {{SESSION_ID}}
+spec:
+  restartPolicy: Never
+  containers:
+  - name: shell
+    image: {{SHELL_IMAGE}}
+    stdin: true
+    tty: true
+    workingDir: /workspace
+    command: ["/bin/bash", "-lc", "cd /workspace; exec bash"]
+    volumeMounts:
+    - name: workspace
+      mountPath: /workspace
+    securityContext:
+      runAsUser: 1000
+      runAsGroup: 1000
+      allowPrivilegeEscalation: false
+  volumes:
+  - name: workspace
+    hostPath:
+      path: /cache/{{WORKSPACE_ID}}
+      type: Directory

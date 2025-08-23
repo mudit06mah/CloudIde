@@ -12,6 +12,10 @@ spec:
         volumeMounts:
         - name: workspace-volume
           mountPath: /workspace
+        securityContext:
+          runAsUser: 1000
+          runAsGroup: 1000
+          allowPrivilegeEscalation: false
       restartPolicy: Never
       volumes:
       - name: workspace-volume

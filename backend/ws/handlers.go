@@ -127,8 +127,7 @@ func handleCreateProject(payload json.RawMessage) {
 	}
 
 	workspaceId = createWorkspaceId(10);
-	workspaces[workspaceId] = data.ProjectType
-	
+	workspaces[workspaceId] = data.ProjectType	
 
 	os.Setenv("CACHE_DIR", filepath.Join(os.Getenv("CACHE_DIR"), workspaceId));
 
