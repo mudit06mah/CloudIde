@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -19,9 +20,11 @@ import (
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/restmapper"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/remotecommand"
 )
 
 type memoryCache struct {
@@ -102,7 +105,7 @@ func RenderTemplate(projectType string, replace map[string]string) ([]byte, erro
 	return yaml, nil
 }
 
-func (c * Client) ApplyManifest(ctx context.Context, manifest []byte, namespace string) error {
+func (c *Client) ApplyManifest(ctx context.Context, manifest []byte, namespace string) error {
 	//decode yaml manifest:
 	dec := yaml.NewYAMLOrJSONDecoder(strings.NewReader(string(manifest)), 4096)
 	var rawObj map[string]interface{}
@@ -136,7 +139,7 @@ func (c * Client) ApplyManifest(ctx context.Context, manifest []byte, namespace 
 			}
 		}
 
-		//create or update resource
+		//create or update resource:
 		name := u.GetName()
 		var resourceInterface dynamic.ResourceInterface
 
@@ -164,4 +167,116 @@ func (c * Client) ApplyManifest(ctx context.Context, manifest []byte, namespace 
 	}
 
 	return nil
+}
+
+func (c *Client) DeleteResource(ctx context.Context, kind string, name string, namespace string) error {
+	var gvrMap = map[string]schema.GroupVersionResource{
+		"Pod": {Group: "", Version: "v1", Resource:"pods"},
+		"Deployment": {Group: "apps", Version: "v1", Resource: "deployment"},
+		"Service": {Group: "", Version: "v1", Resource: "services"},
+		"Ingress": {Group: "networking.k8s.io", Version: "v1", Resource: "ingress"},
+		"Role": {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "role"},
+		"RoleBinding": {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"},
+	}
+
+	
+}
+
+func (c *Client) waitForPodByLabel(ctx context.Context, namespace string, labelSelector string, timeout time.Duration) (string,error){
+	tctx,cancel := context.WithTimeout(ctx,timeout)
+	defer cancel()
+
+	watcher,err := c.Clientset.CoreV1().Pods(namespace).Watch(ctx,metav1.ListOptions{
+		LabelSelector: labelSelector,
+	})
+	if err!=nil{
+		return "", fmt.Errorf("Error Watching Pod with Label %s: %v", labelSelector,err);
+	}
+
+	ch := watcher.ResultChan()
+	defer watcher.Stop()
+
+	list,err := c.Clientset.CoreV1().Pods(namespace).List(ctx,metav1.ListOptions{LabelSelector: labelSelector})
+
+	if err==nil{
+		for _,p := range list.Items{
+			if isPodReady(&p){
+				return p.Name,nil
+			}
+		}
+	}
+
+	for{
+		select{
+		case ev,ok := <-ch:
+			if !ok{
+				return "",fmt.Errorf("Pod Watche channel closed")
+			}
+			if ev.Object == nil{
+				continue
+			}
+			pod := ev.Object.(*corev1.Pod)
+			if isPodReady(pod){
+				return pod.Name,nil
+			}
+		case <-tctx.Done():
+			return "",fmt.Errorf("Timeout Waiting for pod with label %s", labelSelector)
+		}
+	}
+}
+
+func isPodReady(p *corev1.Pod) bool{
+	if p.Status.Phase != corev1.PodRunning{
+		return false
+	}
+
+	for _,c := range p.Status.Conditions{
+		if c.Type == corev1.PodReady && c.Status == corev1.ConditionTrue{
+			return true
+		}
+	}
+
+	return false
+}
+
+func (c *Client) streamPodLogs(ctx context.Context, namespace string, podName string, follow bool, writer io.Writer) error {
+	req := c.Clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{Follow: follow})
+	stream, err := req.Stream(ctx)
+	if err != nil{
+		return fmt.Errorf("Error getting log stream: %v",err)
+	}
+	defer stream.Close()
+
+	_,err = io.Copy(writer, stream)
+	return err
+}
+
+func (c *Client) ExecToPod(ctx context.Context, namespace string, podName string, container string, command []string, stdin io.Reader, stdout, stderr io.Writer,tty bool) error{
+	req := c.Clientset.CoreV1().RESTClient().
+		Post().
+		Resource("pods").
+		Name(podName).
+		Namespace(namespace).
+		SubResource("exec").
+		VersionedParams(&corev1.PodExecOptions{
+			Command: command,
+			Container: container,
+			Stdin: stdin!=nil,
+			Stdout: stdout!=nil,
+			Stderr: stderr!=nil,
+			TTY: tty,
+		}, scheme.ParameterCodec)
+
+	executor, err := remotecommand.NewSPDYExecutor(c.Config, "POST", req.URL())
+	if err != nil{
+		return fmt.Errorf("Error Executing to Pod: %v",err)
+	}
+
+	return executor.Stream(remotecommand.StreamOptions{
+		Stdin: stdin,
+		Stdout: stdout,
+		Stderr: stderr,
+		Tty: tty,
+	})
+
 }
