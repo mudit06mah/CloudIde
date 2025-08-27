@@ -2,17 +2,14 @@ package k8s
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -116,7 +113,7 @@ func (c *Client) ApplyManifest(ctx context.Context, manifest []byte, namespace s
 				break
 			}
 
-			return fmt.Errorf("Failed to decode manifest: %v", err)
+			return fmt.Errorf("failed to decode manifest: %v", err)
 		}
 	
 		u := &unstructured.Unstructured{Object: rawObj}
@@ -126,7 +123,7 @@ func (c *Client) ApplyManifest(ctx context.Context, manifest []byte, namespace s
 		kind := u.GetKind()
 		gv,err := schema.ParseGroupVersion(apiVer)
 		if err != nil{
-			return fmt.Errorf("Error while parsing GV: %v", err)
+			return fmt.Errorf("error while parsing GV: %v", err)
 		}
 		gk:= schema.GroupKind{Group: gv.Group, Kind: kind}
 		
@@ -135,17 +132,16 @@ func (c *Client) ApplyManifest(ctx context.Context, manifest []byte, namespace s
 			c.RESTMapper.Reset()
 			mapping,err = c.RESTMapper.RESTMapping(gk,gv.Version)
 			if err != nil{
-				return fmt.Errorf("Failed RESTMapping for %s %s: %v", apiVer,kind,err);
+				return fmt.Errorf("failed RESTMapping for %s %s: %v", apiVer,kind,err)
 			}
 		}
 
 		//create or update resource:
 		name := u.GetName()
-		var resourceInterface dynamic.ResourceInterface
 
-		resourceInterface = c.Dynamic.Resource(mapping.Resource).Namespace(namespace)
+		resourceInterface := c.Dynamic.Resource(mapping.Resource).Namespace(namespace)
 
-		resourceInterface.Create(ctx,u,metav1.CreateOptions{})
+		_,err = resourceInterface.Create(ctx,u,metav1.CreateOptions{})
 		if err == nil{
 			continue
 		}
@@ -153,17 +149,17 @@ func (c *Client) ApplyManifest(ctx context.Context, manifest []byte, namespace s
 		if errors.IsAlreadyExists(err){
 			existing,getErr := resourceInterface.Get(ctx,name,metav1.GetOptions{})
 			if getErr != nil{
-				return fmt.Errorf("Error Getting existing resource %s %s: %v",kind,name,getErr);
+				return fmt.Errorf("error getting existing resource %s %s: %v",kind,name,getErr)
 			}
 
 			u.SetResourceVersion(existing.GetResourceVersion())
 			_,updateErr := resourceInterface.Update(ctx,u,metav1.UpdateOptions{})
 			if updateErr != nil{
-				return fmt.Errorf("Error Update existing resource %s %s: %v", kind,name, updateErr)
+				return fmt.Errorf("error updating existing resource %s %s: %v", kind,name, updateErr)
 			}
 			continue
 		}
-		return fmt.Errorf("Error Creating Resource %s %s: %v", kind,name,err)
+		return fmt.Errorf("error creating resource %s %s: %v", kind,name,err)
 	}
 
 	return nil
@@ -171,18 +167,29 @@ func (c *Client) ApplyManifest(ctx context.Context, manifest []byte, namespace s
 
 func (c *Client) DeleteResource(ctx context.Context, kind string, name string, namespace string) error {
 	var gvrMap = map[string]schema.GroupVersionResource{
+		"Job": {Group: "batch", Version: "v1", Resource: "jobs"},
 		"Pod": {Group: "", Version: "v1", Resource:"pods"},
-		"Deployment": {Group: "apps", Version: "v1", Resource: "deployment"},
+		"Deployment": {Group: "apps", Version: "v1", Resource: "deployments"},
 		"Service": {Group: "", Version: "v1", Resource: "services"},
-		"Ingress": {Group: "networking.k8s.io", Version: "v1", Resource: "ingress"},
-		"Role": {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "role"},
+		"Ingress": {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
+		"Role": {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"},
 		"RoleBinding": {Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"},
+		"ServiceAccount": {Group: "", Version: "v1", Resource: "serviceaccounts"},
 	}
 
-	
+	gvr, ok := gvrMap[kind]
+	if !ok{
+		return fmt.Errorf("error finding GVR of kind %s",kind)
+	}
+
+	if namespace == ""{
+		namespace = "default"
+	}
+
+	return c.Dynamic.Resource(gvr).Namespace(namespace).Delete(ctx,name,metav1.DeleteOptions{})
 }
 
-func (c *Client) waitForPodByLabel(ctx context.Context, namespace string, labelSelector string, timeout time.Duration) (string,error){
+func (c *Client) WaitForPodByLabel(ctx context.Context, namespace string, labelSelector string, timeout time.Duration) (string,error){
 	tctx,cancel := context.WithTimeout(ctx,timeout)
 	defer cancel()
 
@@ -190,7 +197,7 @@ func (c *Client) waitForPodByLabel(ctx context.Context, namespace string, labelS
 		LabelSelector: labelSelector,
 	})
 	if err!=nil{
-		return "", fmt.Errorf("Error Watching Pod with Label %s: %v", labelSelector,err);
+		return "", fmt.Errorf("error watching pod with label %s: %v", labelSelector,err)
 	}
 
 	ch := watcher.ResultChan()
@@ -210,7 +217,7 @@ func (c *Client) waitForPodByLabel(ctx context.Context, namespace string, labelS
 		select{
 		case ev,ok := <-ch:
 			if !ok{
-				return "",fmt.Errorf("Pod Watche channel closed")
+				return "",fmt.Errorf("pod watch channel closed")
 			}
 			if ev.Object == nil{
 				continue
@@ -220,7 +227,7 @@ func (c *Client) waitForPodByLabel(ctx context.Context, namespace string, labelS
 				return pod.Name,nil
 			}
 		case <-tctx.Done():
-			return "",fmt.Errorf("Timeout Waiting for pod with label %s", labelSelector)
+			return "",fmt.Errorf("timeout waiting for pod with label %s", labelSelector)
 		}
 	}
 }
@@ -239,11 +246,11 @@ func isPodReady(p *corev1.Pod) bool{
 	return false
 }
 
-func (c *Client) streamPodLogs(ctx context.Context, namespace string, podName string, follow bool, writer io.Writer) error {
+func (c *Client) StreamPodLogs(ctx context.Context, namespace string, podName string, follow bool, writer io.Writer) error {
 	req := c.Clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{Follow: follow})
 	stream, err := req.Stream(ctx)
 	if err != nil{
-		return fmt.Errorf("Error getting log stream: %v",err)
+		return fmt.Errorf("error getting log stream: %v",err)
 	}
 	defer stream.Close()
 
@@ -269,7 +276,7 @@ func (c *Client) ExecToPod(ctx context.Context, namespace string, podName string
 
 	executor, err := remotecommand.NewSPDYExecutor(c.Config, "POST", req.URL())
 	if err != nil{
-		return fmt.Errorf("Error Executing to Pod: %v",err)
+		return fmt.Errorf("error executing to pod: %v",err)
 	}
 
 	return executor.Stream(remotecommand.StreamOptions{

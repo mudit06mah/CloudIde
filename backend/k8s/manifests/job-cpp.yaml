@@ -11,7 +11,7 @@ spec:
         image: gcc:latest
         command: ["bash", "-lc", "g++ /workspace/main.cpp -o /workspace/main && /workspace/main"]
         volumeMounts:
-        - name: workspace-volume
+        - name: workspace
           mountPath: /workspace
         securityContext:
           runAsUser: 1000
@@ -19,7 +19,7 @@ spec:
           allowPrivilegeEscalation: false
       restartPolicy: Never
       volumes:
-      - name: workspace-volume
+      - name: workspace
         hostPath:
           path: /cache/{{WORKSPACE_ID}}
           type: Directory
