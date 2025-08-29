@@ -1,6 +1,7 @@
 package ws
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -12,6 +13,7 @@ import (
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/websocket"
 	"github.com/mudit06mah/CloudIde/aws"
+	"github.com/mudit06mah/CloudIde/k8s"
 )
 
 var validate = validator.New()
@@ -108,7 +110,7 @@ func messageHandler(con *websocket.Conn, rawMsg []byte) {
 
 func handleCreateProject(payload json.RawMessage) {
 	type CreateProjectData struct {
-		ProjectType string `json:"projectType" validate:"required,oneof=python nodejs golang cpp"`
+		ProjectType string `json:"projectType" validate:"required,oneof=python nodejs golang cpp react"`
 	}
 	var data CreateProjectData
 
@@ -137,6 +139,19 @@ func handleCreateProject(payload json.RawMessage) {
 		sendResponse(false, "Error downloading template: "+err.Error(), nil)
 		return
 	}
+
+	//create client:
+	ctx := context.Background()
+	client,err := k8s.NewK8sClient()
+	if err != nil {
+		fmt.Println("Error creating k8s client:", err)
+		sendResponse(false, "Error creating k8s client: "+err.Error(), nil)
+		return
+	}
+
+	//create shell pod:
+
+
 
 	sendResponse(true, "Project created successfully", nil)
 }
