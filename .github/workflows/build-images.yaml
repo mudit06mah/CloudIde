@@ -4,12 +4,12 @@ on:
   push:
     paths:
       - 'backend/images/**'
-    worfkflow_dispatch:
+  workflow_dispatch:
 
-  permissions:
-    contents: read
-    packages: write
-    id-token: write
+permissions:
+  contents: read
+  packages: write
+  id-token: write
 
 jobs:
   build:
@@ -17,46 +17,46 @@ jobs:
     strategy:
       matrix:
         include:
-        - name: golang
-          path: images/golang
-          tag: shell-golang-{{ github.sha }}
-        - name: cpp
-          path: images/cpp
-          tag: shell-cpp-{{ github.sha }}
-        - name: python
-          path: images/python
-          tag: shell-python-{{ github.sha }}
-        - name: nodejs
-          path: images/nodejs
-          tag: shell-nodejs-{{ github.sha }}
-        - name: react
-          path: images/react
-          tag: shell-react-{{ github.sha }}
+          - name: golang
+            path: backend/images/golang
+            image_name: shell-golang
+          - name: cpp
+            path: backend/images/cpp
+            image_name: shell-cpp
+          - name: python
+            path: backend/images/python
+            image_name: shell-python
+          - name: nodejs
+            path: backend/images/nodejs
+            image_name: shell-nodejs
+          - name: react
+            path: backend/images/react
+            image_name: shell-react
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      
+
       - name: Set up QEMU (multi-arch, optional)
-        uses: docker/setup-qemu-action@v2
-      
+        uses: docker/setup-qemu-action@v3
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-    
-    - name: Build and push image
-      uses: docker/build-push-action@v4
-      with:
-        context: ${{ matrix.path }}
-        file: ${{ matrix.path }}/Dockerfile
-        push: true
-        tags: |
-          ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:latest
-          ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:{{ github.sha }}
 
-    - name: Smoke test (quick)
-      run: |
-        docker run --rm ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:${{ github.sha }} sh -c "echo smoke; exit 0"
+      - name: Build and push image
+        uses: docker/build-push-action@v4
+        with:
+          context: ${{ matrix.path }}
+          file: ${{ matrix.path }}/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:latest
+            ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:${{ github.sha }}
+
+      - name: Smoke test (quick)
+        run: |
+          docker run --rm ghcr.io/${{ github.repository_owner }}/${{ matrix.image_name }}:${{ github.sha }} sh -c "echo smoke; exit 0"
