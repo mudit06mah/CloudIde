@@ -18,4 +18,4 @@ RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} || true \
 WORKDIR /workspace
 USER ${UNAME}
 
-ENTRYPOINT [ "bin/bash" ]
+ENTRYPOINT [ "/bin/bash" ]
