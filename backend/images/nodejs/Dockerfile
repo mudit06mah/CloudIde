@@ -18,7 +18,7 @@ RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} || true \
 WORKDIR /workspace
 USER ${UNAME}
 
-ENTRYPOINT [ "/bin/bash" ]
+CMD [ "/bin/bash" ]
 
 # Expose Vite default dev server port
 EXPOSE 5173
