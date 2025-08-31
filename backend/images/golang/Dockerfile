@@ -1,4 +1,4 @@
-FROM golang:1.21-bookworm-slim
+FROM golang:1.21-bullseye
 
 ENV DEBIAN_FRONTEND=noninteractive
 
