@@ -13,9 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG UID=1000
 ARG UNAME=dev
 
-RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} \
+RUN if ! id -u ${UID} >/dev/null 2>&1; then \
+      useradd -m -u ${UID} -s /bin/bash ${UNAME}; \
+    fi \
  && mkdir -p /workspace \
  && chown -R ${UID}:${UID} /workspace
+
  
 WORKDIR /workspace
 USER ${UNAME}
