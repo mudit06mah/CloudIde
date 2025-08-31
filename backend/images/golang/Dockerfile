@@ -1,4 +1,4 @@
-FROM debian:bookworm_slim
+FROM golang:1.21-bookworm-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -7,6 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
     ca-certificates && rm -rf /var/lib/apt/lists/*
+
+ARG UID=1000
 
 ARG UID=1000
 ARG UNAME=dev

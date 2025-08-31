@@ -29,9 +29,6 @@ jobs:
           - name: nodejs
             path: backend/images/nodejs
             image_name: shell-nodejs
-          - name: react
-            path: backend/images/react
-            image_name: shell-react
 
     steps:
       - name: Checkout

@@ -1,4 +1,4 @@
-FROM debian:bookworm_slim
+FROM node:18-bullseye-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -19,3 +19,7 @@ WORKDIR /workspace
 USER ${UNAME}
 
 ENTRYPOINT [ "bin/bash" ]
+
+# Expose Vite default dev server port
+EXPOSE 5173
+

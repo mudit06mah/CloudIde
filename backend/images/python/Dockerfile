@@ -1,4 +1,4 @@
-FROM debian:bookworm_slim
+FROM python:3.12-bullseye-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -14,7 +14,7 @@ ARG UNAME=dev
 RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} || true \
  && mkdir -p /workspace \
  && chown -R ${UID}:${UID} /workspace
- 
+
 WORKDIR /workspace
 USER ${UNAME}
 
