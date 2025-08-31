@@ -6,12 +6,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     curl \
-    ca-certificates && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    passwd \
+ && rm -rf /var/lib/apt/lists/*
 
 ARG UID=1000
 ARG UNAME=dev
 
-RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} || true \
+RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} \
  && mkdir -p /workspace \
  && chown -R ${UID}:${UID} /workspace
  
@@ -20,6 +22,4 @@ USER ${UNAME}
 
 CMD [ "/bin/bash" ]
 
-# Expose Vite default dev server port
 EXPOSE 5173
-
