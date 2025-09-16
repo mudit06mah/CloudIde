@@ -13,16 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG UID=1000
 ARG UNAME=dev
 
-RUN if ! id -u ${UID} >/dev/null 2>&1; then \
-      useradd -m -u ${UID} -s /bin/bash ${UNAME}; \
-    fi \
+RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} || true \
  && mkdir -p /workspace \
  && chown -R ${UID}:${UID} /workspace
 
- 
 WORKDIR /workspace
 USER ${UNAME}
 
-CMD [ "/bin/bash" ]
+CMD ["/bin/bash"]
 
 EXPOSE 5173
