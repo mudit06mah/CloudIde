@@ -13,13 +13,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG UID=1000
 ARG UNAME=dev
 
-RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} || true \
+RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} \
  && mkdir -p /workspace \
  && chown -R ${UID}:${UID} /workspace
 
 WORKDIR /workspace
-USER ${UNAME}
 
+# Let user pick user at runtime; default to root
 CMD ["/bin/bash"]
 
 EXPOSE 5173
