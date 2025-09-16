@@ -10,7 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     passwd \
  && rm -rf /var/lib/apt/lists/*
 
-ARG UID=1000
+ARG UID=1500
 ARG UNAME=dev
 
 RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} \
