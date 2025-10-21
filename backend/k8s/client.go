@@ -89,20 +89,8 @@ func NewK8sClient() (*Client, error) {
 		
 }
 
-func RenderTemplate(projectType string, replace map[string]string) ([]byte, error) {
-	fileName := "./manifests/" + projectType + ".yaml"
-	yaml,err := os.ReadFile(fileName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read template file: %v", err)
-	}
-	for key, value := range replace {
-		yaml = []byte(strings.ReplaceAll(string(yaml), "{{"+key+"}}", value))
-	}
-
-	return yaml, nil
-}
-
-func (c *Client) ApplyManifest(ctx context.Context, manifest []byte, namespace string) error {
+/* todo: Replace function
+func (c *Client) ApplyManifest(ctx context.Context, manifest []byte) error {
 	//decode yaml manifest:
 	dec := yaml.NewYAMLOrJSONDecoder(strings.NewReader(string(manifest)), 4096)
 	var rawObj map[string]interface{}
@@ -164,6 +152,7 @@ func (c *Client) ApplyManifest(ctx context.Context, manifest []byte, namespace s
 
 	return nil
 }
+*/
 
 func (c *Client) DeleteResource(ctx context.Context, kind string, name string, namespace string) error {
 	var gvrMap = map[string]schema.GroupVersionResource{

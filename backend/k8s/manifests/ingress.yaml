@@ -2,7 +2,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: ingress-{{WORKSPACE_ID}}
-  namespace: {{NAMESPACE}}
+  namespace: cloud-ide
   annonations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:

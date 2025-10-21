@@ -8,7 +8,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: ide-backend-role
-  namespace: default
+  namespace: cloud-ide
 rules:
 - apiGroups: [""]
   resources: ["pods", "pods/log", "services", "endpoints"]
@@ -24,7 +24,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: ide-backend-rolebinding
-  namespace: default
+  namespace: cloud-ide
 subjects:
 - kind: ServiceAccount
   name: ide-backend-sa
