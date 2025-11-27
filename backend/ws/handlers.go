@@ -121,6 +121,7 @@ func handleCreateProject(payload json.RawMessage) {
 		sendResponse(false, "Error unmarshalling createProject payload: "+err.Error(), nil)
 		return
 	}
+	
 	//Validate
 	if err = validate.Struct(data); err != nil {
 		fmt.Println("Validation error:", err)
@@ -142,7 +143,7 @@ func handleCreateProject(payload json.RawMessage) {
 
 	//create client:
 	ctx := context.Background()
-	client,err := k8s.NewK8sClient()
+	client,err := k8s.NewK8sClient(workspaceId)
 	if err != nil {
 		fmt.Println("Error creating k8s client:", err)
 		sendResponse(false, "Error creating k8s client: "+err.Error(), nil)

@@ -119,7 +119,7 @@ func (c *Client) RenderProjectResources(projectType string) ([][]byte, error) {
 
 		// Dynamic Values (todo: recheck this)
 		if resourceName == "ingress" {
-			allVars["HOST"] = fmt.Sprintf("%s.bruh", workspaceId)
+			allVars["HOST"] = workspaceId
 		}
 
 		manifest, err := RenderTemplate(projectType, allVars)

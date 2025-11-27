@@ -5,15 +5,15 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
+//	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+//	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+//	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/yaml"
+//	"k8s.io/apimachinery/pkg/util/yaml"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -38,6 +38,10 @@ func (c *memoryCache) Invalidate() {
 }
 
 
+var workspaceId string
+var namespace string = "cloud-ide"
+
+
 type Client struct {
 	Config	 *rest.Config
 	Clientset *kubernetes.Clientset
@@ -46,7 +50,9 @@ type Client struct {
 	DiscoveryCli *discovery.DiscoveryClient
 }
 
-func NewK8sClient() (*Client, error) {
+func NewK8sClient(workId string) (*Client, error) {
+	workspaceId = workId
+
 	var cfg *rest.Config
 	var err error
 	kubeconfig := os.Getenv("KUBECONFIG")
