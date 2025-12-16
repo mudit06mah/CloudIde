@@ -9,16 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/websocket"
 	"github.com/mudit06mah/CloudIde/aws"
 	"github.com/mudit06mah/CloudIde/k8s"
 )
-
-var validate = validator.New()
-var conn *websocket.Conn
-var workspaceId string
 
 type Response struct {
 	Success bool            `json:"success"`
@@ -30,6 +27,37 @@ type Message struct {
 	Type    string          `json:"type"`
 	Payload json.RawMessage `json:"payload"`
 }
+
+type WSWriter struct {
+	Conn *websocket.Conn
+}
+
+func (w *WSWriter) Write(p []byte) (n int, err error){
+	response := Response{
+		Success: true,
+		Message: "terminal:output",
+		Payload: json.RawMessage(fmt.Sprintf("%q",string(p))),
+	}
+
+	msg,err := json.Marshal(response)
+	if err != nil{
+		return 0,err
+	}
+
+	err = w.Conn.WriteMessage(websocket.TextMessage, msg)
+	if err != nil{
+		return 0,err
+	}
+
+	return len(p),nil
+}
+
+const namespace string = "cloud-ide"
+var validate = validator.New()
+var conn *websocket.Conn
+var workspaceId string
+var client *k8s.Client
+
 
 //helper functions:
 func createWorkspaceId(size int) string{
@@ -101,6 +129,9 @@ func messageHandler(con *websocket.Conn, rawMsg []byte) {
 	case "updateFile":
 		handleUpdateFile(msg.Payload)
 
+	case "requestTerminal":
+		handleRequestTerminal(msg.Payload)
+
 	default:
 		fmt.Println("Unknown message type:", msg.Type)
 		sendResponse(false, "Unknown message type: "+msg.Type, nil)
@@ -143,7 +174,7 @@ func handleCreateProject(payload json.RawMessage) {
 
 	//create client:
 	ctx := context.Background()
-	client,err := k8s.NewK8sClient(workspaceId)
+	client,err = k8s.NewK8sClient(workspaceId)
 	if err != nil {
 		fmt.Println("Error creating k8s client:", err)
 		sendResponse(false, "Error creating k8s client: "+err.Error(), nil)
@@ -151,8 +182,31 @@ func handleCreateProject(payload json.RawMessage) {
 	}
 
 	//create shell pod:
-	
+	var manifests [][]byte
+	manifests ,err = client.RenderProjectResources(data.ProjectType)
+	if err != nil{
+		fmt.Println("Error obtaining manifest files:", err)
+		sendResponse(false,"Error obtaining manifest files:"+err.Error(), nil)
+	}
 
+	for _,manifest := range manifests{
+		err = client.ApplyManifest(ctx,manifest)
+		if err != nil{
+			fmt.Println("Error applying manifest:", err)
+			sendResponse(false,"Error applying manifest:"+err.Error(), nil)
+		}
+	}
+	
+	_, err = client.WaitForPodByLabel(
+		ctx,
+		namespace,
+		fmt.Sprintf("workspace=%s",workspaceId),
+		30*time.Second,
+	)
+	if err != nil{
+		fmt.Println("Error obtaining manifest files:", err)
+		sendResponse(false,"Error obtaining manifest files:"+ err.Error(), nil)
+	}
 
 	sendResponse(true, "Project created successfully", nil)
 }
@@ -372,4 +426,42 @@ func handleDeleteFolder(payload json.RawMessage) {
 	}
 
 	sendResponse(true, "Folder deleted successfully", nil)
+}
+
+func handleRequestTerminal(payload json.RawMessage){
+	var data struct{
+		Instruction string `json:"instruction" validate:"required"`
+	}
+
+	err := json.Unmarshal(payload, &data)
+	if err != nil {
+		fmt.Println("Error unmarshalling requestTerminal payload:", err)
+		sendResponse(false,"Error unmarshalling requestTerminal payload: "+err.Error(), nil)
+		return
+	}
+
+	if client == nil{
+		fmt.Println("K8s client not initialized.")
+		sendResponse(false,"K8s client not initialized", nil)
+		return
+	}
+
+	ctx := context.Background()
+	podName, err := client.WaitForPodByLabel(ctx,namespace,fmt.Sprintf("workspace=%s",workspaceId),1*time.Second)
+	if err != nil{
+		fmt.Println("Error finding pod:",err)
+		sendResponse(false,"Error finding pod: "+err.Error(), nil)
+		return
+	}
+
+	wsWriter := &WSWriter{Conn: conn}
+
+	cmd := []string{"bin/bash","-c",data.Instruction}
+
+	err = client.ExecToPod(ctx, namespace, podName, "shell", cmd, nil, wsWriter, wsWriter, false)
+	if err != nil{
+		fmt.Println("Error executing command:", err)
+		sendResponse(false,"Error executing command:"+err.Error(),nil)
+		return
+	}
 }
