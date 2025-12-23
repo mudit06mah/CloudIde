@@ -160,10 +160,11 @@ func handleCreateProject(payload json.RawMessage) {
 		return
 	}
 
-	workspaceId = createWorkspaceId(10);
-	workspaces[workspaceId] = data.ProjectType	
+	workspaceId = createWorkspaceId(10)
+	workspaces[workspaceId] = data.ProjectType
 
-	os.Setenv("CACHE_DIR", filepath.Join(os.Getenv("CACHE_DIR"), workspaceId));
+	os.Setenv("CACHE_DIR", filepath.Join(os.Getenv("CACHE_DIR"), workspaceId))
+	os.Chown(os.Getenv("CACHE_DIR"),1500,1500)
 
 	_, err = aws.DownloadTemplate(data.ProjectType)
 	if err != nil {

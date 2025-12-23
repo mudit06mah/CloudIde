@@ -18,8 +18,8 @@ spec:
     - name: workspace
       mountPath: /workspace
     securityContext:
-      runAsUser: 1000
-      runAsGroup: 1000
+      runAsUser: 1500
+      runAsGroup: 1500
       allowPrivilegeEscalation: false
   volumes:
   - name: workspace
