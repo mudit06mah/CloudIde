@@ -21,6 +21,27 @@ func StartWebSocketServer() error {
 	return http.ListenAndServe(":"+wsPort, nil)
 }
 
+func wsHandler(w http.ResponseWriter, r *http.Request){
+	query := r.URL.Query()
+	connType := query.Get("type")
+	
+	switch(connType){
+	case "terminal":
+		podName := query.Get("pod")
+		if podName == ""{
+			http.Error(w,"Query missing pod name",http.StatusBadRequest)
+			return
+		}
+
+		HandleTerminal(w,r,client.Clientset,client.Config,podName)
+		return
+	
+	default:
+		handleWebSocket(w,r)
+	}
+	
+}
+
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	upgrader := websocket.Upgrader{
 		CheckOrigin: func(r *http.Request) bool {
