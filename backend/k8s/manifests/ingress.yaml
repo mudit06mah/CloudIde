@@ -3,7 +3,7 @@ kind: Ingress
 metadata:
   name: ingress-{{WORKSPACE_ID}}
   namespace: cloud-ide
-  annonations:
+  annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
   rules:

@@ -119,10 +119,10 @@ func (c *Client) RenderProjectResources(projectType string) ([][]byte, error) {
 
 		// Dynamic Values (todo: recheck this)
 		if resourceName == "ingress" {
-			allVars["HOST"] = workspaceId
+			allVars["HOST"] = workspaceId+".localhost"
 		}
 
-		manifest, err := RenderTemplate(projectType, allVars)
+		manifest, err := RenderTemplate(resourceTemplate.templatePath, allVars)
 		if err != nil {
 			return nil, err
 		}
@@ -134,9 +134,8 @@ func (c *Client) RenderProjectResources(projectType string) ([][]byte, error) {
 	return manifestRender, nil
 }
 
-func RenderTemplate(projectType string, replace map[string]string) ([]byte, error) {
-	fileName := "./manifests/" + projectType + ".yaml"
-	yaml, err := os.ReadFile(fileName)
+func RenderTemplate(templatePath string, replace map[string]string) ([]byte, error) {
+	yaml, err := os.ReadFile(templatePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read template file: %v", err)
 	}

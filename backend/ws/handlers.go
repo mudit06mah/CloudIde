@@ -210,7 +210,12 @@ func handleCreateProject(payload json.RawMessage) {
 		sendResponse(false,"Error obtaining manifest files:"+ err.Error(), nil)
 	}
 
-	sendResponse(true, "Project created successfully", nil)
+	type ProjectPayload struct{
+		WorkspaceId string `json:"workspaceId"`
+	}
+
+	response,_ := json.Marshal(ProjectPayload{WorkspaceId: workspaceId})
+	sendResponse(true, "Project created successfully", response)
 }
 
 func handleCreateFile(payload json.RawMessage) {
