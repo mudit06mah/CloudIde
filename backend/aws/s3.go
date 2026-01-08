@@ -11,7 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-func DownloadTemplate( projectType string ) (string, error) {
+func DownloadTemplate( projectType string, workspaceId string ) (string, error) {
     fmt.Println("Reached DownloadTemplate with projectType:", projectType)
     var prefix string
     //Determine Prefix based on project type
@@ -28,7 +28,7 @@ func DownloadTemplate( projectType string ) (string, error) {
             return "", fmt.Errorf("unsupported project type: %s", projectType)
     }
     
-    cacheDir := os.Getenv("CACHE_DIR")
+    cacheDir := filepath.Join(os.Getenv("CACHE_DIR"),workspaceId)
     bucket := os.Getenv("AWS_S3_BUCKET")
    
     //List folder contents:
