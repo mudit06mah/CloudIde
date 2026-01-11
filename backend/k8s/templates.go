@@ -21,7 +21,7 @@ var ProjectTemplateConfig = map[string]ProjectTemplate{
 		image: "ghcr.io/mudit06mah/shell-cpp:latest",
 		resources: map[string]ResourceTemplate{
 			"shellPod": {
-				templatePath: "./manifests/shell-pod.yaml",
+				templatePath: "./k8s/manifests/shell-pod.yaml",
 				variables: map[string]string{
 					"SHELL_IMAGE": "ghcr.io/mudit06mah/shell-cpp:latest",
 				},
@@ -32,7 +32,7 @@ var ProjectTemplateConfig = map[string]ProjectTemplate{
 		image: "ghcr.io/mudit06mah/shell-python:latest",
 		resources: map[string]ResourceTemplate{
 			"shellPod": {
-				templatePath: "./manifests/shell-pod.yaml",
+				templatePath: "./k8s/manifests/shell-pod.yaml",
 				variables: map[string]string{
 					"SHELL_IMAGE": "ghcr.io/mudit06mah/shell-python:latest",
 				},
@@ -43,7 +43,7 @@ var ProjectTemplateConfig = map[string]ProjectTemplate{
 		image: "ghcr.io/mudit06mah/shell-nodejs:latest",
 		resources: map[string]ResourceTemplate{
 			"shellPod": {
-				templatePath: "./manifests/shell-pod.yaml",
+				templatePath: "./k8s/manifests/shell-pod.yaml",
 				variables: map[string]string{
 					"SHELL_IMAGE": "ghcr.io/mudit06mah/shell-nodejs:latest",
 				},
@@ -54,7 +54,7 @@ var ProjectTemplateConfig = map[string]ProjectTemplate{
 		image: "ghcr.io/mudit06mah/shell-golang:latest",
 		resources: map[string]ResourceTemplate{
 			"shellPod": {
-				templatePath: "./manifests/shell-pod.yaml",
+				templatePath: "./k8s/manifests/shell-pod.yaml",
 				variables: map[string]string{
 					"SHELL_IMAGE": "ghcr.io/mudit06mah/shell-golang:latest",
 				},
@@ -65,17 +65,17 @@ var ProjectTemplateConfig = map[string]ProjectTemplate{
 		image: "ghcr.io/mudit06mah/shell-react:latest",
 		resources: map[string]ResourceTemplate{
 			"shellPod": {
-				templatePath: "./manifests/shell-pod.yaml",
+				templatePath: "./k8s/manifests/shell-pod.yaml",
 				variables: map[string]string{
 					"SHELL_IMAGE": "ghcr.io/mudit06mah/shell-react:latest",
 				},
 			},
 			"service": {
-				templatePath: "./manifests/service.yaml",
+				templatePath: "./k8s/manifests/service.yaml",
 				variables:    map[string]string{},
 			},
 			"ingress": {
-				templatePath: "./manifests/ingress.yaml",
+				templatePath: "./k8s/manifests/ingress.yaml",
 				variables: map[string]string{
 					"HOST": "",
 				},

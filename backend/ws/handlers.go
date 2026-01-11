@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -68,7 +67,7 @@ var client *k8s.Client
 
 // helper functions:
 func createWorkspaceId(size int) string {
-	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	charset := "abcdefghijklmnopqrstuvwxyz0123456789"
 	id := ""
 
 	for i := 0; i < size; i++ {
@@ -174,7 +173,7 @@ func handleCreateProject(payload json.RawMessage) {
 	workspaces[workspaceId] = data.ProjectType
 
 	cacheDir := filepath.Join(os.Getenv("CACHE_DIR"),workspaceId)
-	os.Chown(cacheDir, 1500, 1500)
+	//os.Chown(cacheDir, 1500, 1500)
 
 	_, err = aws.DownloadTemplate(data.ProjectType, workspaceId)
 	if err != nil {
@@ -212,7 +211,7 @@ func handleCreateProject(payload json.RawMessage) {
 		ctx,
 		namespace,
 		fmt.Sprintf("workspace=%s", workspaceId),
-		30*time.Second,
+		300*time.Second,
 	)
 	if err != nil {
 		fmt.Println("Error obtaining manifest files:", err)
@@ -316,62 +315,50 @@ func handleGetFile(payload json.RawMessage) {
 }
 
 func handleUpdateFile(payload json.RawMessage) {
-	type UpdateFile struct {
-		FileName    string `json:"fileName" validate:"required"`
-		FilePath    string `json:"filePath" validate:"required"`
-		LineNumber  int    `json:"lineNumber" validate:"required,min=1"`
-		LineContent string `json:"lineContent" validate:"required"`
-	}
+    // UPDATED: Now accepts full content instead of line-by-line
+    type UpdateFile struct {
+        FileName string `json:"fileName" validate:"required"`
+        FilePath string `json:"filePath" validate:"required"`
+        Content  string `json:"content" validate:"required"` // Base64 encoded full content
+    }
 
-	var data UpdateFile
-	//Unmarshal
-	err := json.Unmarshal(payload, &data)
-	if err != nil {
-		fmt.Println("Error unmarshalling updateFile payload:", err)
-		sendResponse(false, "Error unmarshalling updateFile payload: "+err.Error(), nil)
-		return
-	}
-	//Validate
-	if err = validate.Struct(data); err != nil {
-		fmt.Println("Validation error:", err)
-		sendResponse(false, "Validation error: "+err.Error(), nil)
-		return
-	}
+    var data UpdateFile
+    // Unmarshal
+    err := json.Unmarshal(payload, &data)
+    if err != nil {
+        fmt.Println("Error unmarshalling updateFile payload:", err)
+        sendResponse(false, "Error unmarshalling updateFile payload: "+err.Error(), nil)
+        return
+    }
+    // Validate
+    if err = validate.Struct(data); err != nil {
+        fmt.Println("Validation error:", err)
+        sendResponse(false, "Validation error: "+err.Error(), nil)
+        return
+    }
 
-	cacheDir := filepath.Join(os.Getenv("CACHE_DIR"),workspaceId)
-	localPath := filepath.Join(cacheDir, data.FilePath, data.FileName)
+    // Construct local path
+    cacheDir := filepath.Join(os.Getenv("CACHE_DIR"), workspaceId)
+    localPath := filepath.Join(cacheDir, data.FilePath, data.FileName)
 
-	lines, err := os.ReadFile(localPath)
-	if err != nil {
-		fmt.Println("Error reading file:", err)
-		sendResponse(false, "Error reading file: "+err.Error(), nil)
-		return
-	}
+    // Decode Base64 Content
+    decodedContent, err := base64.StdEncoding.DecodeString(data.Content)
+    if err != nil {
+        fmt.Println("Error decoding file content:", err)
+        sendResponse(false, "Error decoding file content: "+err.Error(), nil)
+        return
+    }
 
-	linesArray := strings.Split(string(lines), "\r\n")
-	if data.LineNumber > len(linesArray) {
-		fmt.Println("Line number exceeds file length")
-		sendResponse(false, "Line number exceeds file length", nil)
-		return
-	}
+    // Write file (Overwrite)
+    // 0644 provides read/write for owner, read-only for others
+    err = os.WriteFile(localPath, decodedContent, 0644)
+    if err != nil {
+        fmt.Println("Error writing file:", err)
+        sendResponse(false, "Error writing file: "+err.Error(), nil)
+        return
+    }
 
-	decodedContent, err := base64.StdEncoding.DecodeString(data.LineContent)
-	if err != nil {
-		fmt.Println("Error decoding line content:", err)
-		sendResponse(false, "Error decoding line content: "+err.Error(), nil)
-		return
-	}
-
-	linesArray[data.LineNumber-1] = string(decodedContent)
-	updatedContent := strings.Join(linesArray, "\r\n")
-	err = os.WriteFile(localPath, []byte(updatedContent), 0644)
-	if err != nil {
-		fmt.Println("Error writing file:", err)
-		sendResponse(false, "Error writing file: "+err.Error(), nil)
-		return
-	}
-
-	sendResponse(true, "File updated successfully", nil)
+    sendResponse(true, "File updated successfully", nil)
 }
 
 func handleDeleteFile(payload json.RawMessage) {

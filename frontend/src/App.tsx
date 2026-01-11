@@ -1,27 +1,26 @@
-import {
-  createBrowserRouter,
-  RouterProvider,
-} from "react-router-dom";
-import './App.css'
+import { createBrowserRouter, RouterProvider } from "react-router-dom";
+import './index.css';
 import Home from './pages/Home';
-import { Socket } from './utils/Socket';
+import Workspace from "./pages/Workspace";
+import { SocketProvider } from './utils/Socket';
 
 const router = createBrowserRouter([
   {
     path: "/",
     element: <Home />,
   },
+  {
+    path: "/workspace/:workspaceId",
+    element: <Workspace />,
+  },
 ]);
 
 function App() {
-
   return (
-    <>
-      <Socket>
-        <RouterProvider router={router} />    
-      </Socket>
-    </>
-  )
+    <SocketProvider>
+      <RouterProvider router={router} />
+    </SocketProvider>
+  );
 }
 
-export default App
+export default App;
