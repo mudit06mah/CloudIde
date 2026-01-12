@@ -225,6 +225,8 @@ func handleCreateProject(payload json.RawMessage) {
 
 	tree,_ := generateTree(cacheDir,workspaceId)
 
+	fmt.Println("Generated Tree:", tree)
+
 	response, _ := json.Marshal(ProjectPayload{WorkspaceId: workspaceId, Tree: tree})
 	sendResponse(true, "Project created successfully", response)
 }
@@ -265,12 +267,12 @@ func handleCreateFile(payload json.RawMessage) {
 
 func handleGetFile(payload json.RawMessage) {
 	type GetFile struct {
-		FileName string `json:"fileName" validate:"required"`
 		FilePath string `json:"filePath" validate:"required"`
 	}
 	var data GetFile
 	//Unmarshal
 	err := json.Unmarshal(payload, &data)
+	fmt.Println(data)
 	if err != nil {
 		fmt.Println("Error unmarshalling getFile payload:", err)
 		sendResponse(false, "Error unmarshalling getFile payload: "+err.Error(), nil)
@@ -284,8 +286,7 @@ func handleGetFile(payload json.RawMessage) {
 	}
 
 	//check if file exists
-	cacheDir := filepath.Join(os.Getenv("CACHE_DIR"),workspaceId)
-	localPath := filepath.Join(cacheDir, data.FilePath, data.FileName)
+	localPath := data.FilePath
 	if _, err := os.Stat(localPath); os.IsNotExist(err) {
 		fmt.Println("File does not exist:", localPath)
 		sendResponse(false, "File does not exist: "+localPath, nil)
@@ -315,9 +316,7 @@ func handleGetFile(payload json.RawMessage) {
 }
 
 func handleUpdateFile(payload json.RawMessage) {
-    // UPDATED: Now accepts full content instead of line-by-line
     type UpdateFile struct {
-        FileName string `json:"fileName" validate:"required"`
         FilePath string `json:"filePath" validate:"required"`
         Content  string `json:"content" validate:"required"` // Base64 encoded full content
     }
@@ -338,8 +337,7 @@ func handleUpdateFile(payload json.RawMessage) {
     }
 
     // Construct local path
-    cacheDir := filepath.Join(os.Getenv("CACHE_DIR"), workspaceId)
-    localPath := filepath.Join(cacheDir, data.FilePath, data.FileName)
+    localPath := data.FilePath
 
     // Decode Base64 Content
     decodedContent, err := base64.StdEncoding.DecodeString(data.Content)
@@ -477,7 +475,8 @@ func handleGetTree(payload json.RawMessage) {
 		Path string `json:"path"`
 		Name string `json:"name"`
 	}
-	
+	fmt.Println("Inside Handle Get Tree:", payload)
+
 	err := json.Unmarshal(payload, &data)
 	if err != nil{
 		fmt.Println("Error Unmarshaling handleGetTree payload: ",err)
@@ -498,7 +497,7 @@ func handleGetTree(payload json.RawMessage) {
 		sendResponse(false,"Error Marshaling Tree: "+err.Error(),nil)
 		return	
 	}
-
+	fmt.Println("Generated Tree: ",Tree)
 	sendResponse(true,"Succesfully generated tree",response)
 }
 

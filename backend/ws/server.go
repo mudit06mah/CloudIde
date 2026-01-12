@@ -16,7 +16,7 @@ func StartWebSocketServer() error {
 	
 	wsPort := os.Getenv("WS_PORT")
 
-	http.HandleFunc("/ws", handleWebSocket)
+	http.HandleFunc("/ws", wsHandler)
 	log.Println("WebSocket server started on port:", wsPort)
 	return http.ListenAndServe(":"+wsPort, nil)
 }
