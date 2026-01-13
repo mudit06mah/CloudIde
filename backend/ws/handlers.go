@@ -63,9 +63,22 @@ const namespace string = "cloud-ide"
 var validate = validator.New()
 var conn *websocket.Conn
 var workspaceId string
+// REMOVED global cachePath to prevent race conditions
 var client *k8s.Client
 
-// helper functions:
+// --- Helper Functions ---
+
+// FIX: Recursive Chmod to force permissions regardless of Umask
+func recursiveChmod(path string, mode os.FileMode) error {
+	return filepath.Walk(path, func(name string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		// Force permissions on every file and folder
+		return os.Chmod(name, mode)
+	})
+}
+
 func createWorkspaceId(size int) string {
 	charset := "abcdefghijklmnopqrstuvwxyz0123456789"
 	id := ""
@@ -98,7 +111,6 @@ func sendResponse(success bool, message string, payload json.RawMessage) {
 	if err != nil {
 		fmt.Println("Error sending response:", err)
 	}
-
 }
 
 func messageHandler(con *websocket.Conn, rawMsg []byte) {
@@ -148,6 +160,8 @@ func messageHandler(con *websocket.Conn, rawMsg []byte) {
 	}
 }
 
+// --- Handlers ---
+
 func handleCreateProject(payload json.RawMessage) {
 	type CreateProjectData struct {
 		ProjectType string `json:"projectType" validate:"required,oneof=python nodejs golang cpp react"`
@@ -172,14 +186,29 @@ func handleCreateProject(payload json.RawMessage) {
 	workspaceId = createWorkspaceId(10)
 	workspaces[workspaceId] = data.ProjectType
 
-	cacheDir := filepath.Join(os.Getenv("CACHE_DIR"),workspaceId)
-	//os.Chown(cacheDir, 1500, 1500)
+	// Use local variable for path
+	currentCachePath := filepath.Join(os.Getenv("CACHE_DIR"), workspaceId)
+	
+	// FIX: Create dir and IMMEDIATELY chmod to fix umask issues
+	if err := os.MkdirAll(currentCachePath, 0777); err != nil {
+		fmt.Println("Error creating cache dir:", err)
+		sendResponse(false, "Error creating cache dir: "+err.Error(), nil)
+		return
+	}
+	os.Chmod(currentCachePath, 0777)
 
 	_, err = aws.DownloadTemplate(data.ProjectType, workspaceId)
 	if err != nil {
 		fmt.Println("Error downloading template:", err)
 		sendResponse(false, "Error downloading template: "+err.Error(), nil)
 		return
+	}
+	
+	// FIX: Recursively set 0777 on everything AWS SDK just downloaded
+	// This ensures the Pod (User 1500) can write to these files.
+	if err := recursiveChmod(currentCachePath, 0777); err != nil {
+		fmt.Println("Error setting permissions:", err)
+		// We continue even if this fails, but it's critical for permissions
 	}
 
 	//create client:
@@ -219,13 +248,11 @@ func handleCreateProject(payload json.RawMessage) {
 	}
 
 	type ProjectPayload struct {
-		WorkspaceId string `json:"workspaceId"`
-		Tree FileNode `json:"fileNode"`
+		WorkspaceId string   `json:"workspaceId"`
+		Tree        FileNode `json:"fileNode"`
 	}
 
-	tree,_ := generateTree(cacheDir,workspaceId)
-
-	fmt.Println("Generated Tree:", tree)
+	tree, _ := generateTree(currentCachePath, workspaceId)
 
 	response, _ := json.Marshal(ProjectPayload{WorkspaceId: workspaceId, Tree: tree})
 	sendResponse(true, "Project created successfully", response)
@@ -251,8 +278,7 @@ func handleCreateFile(payload json.RawMessage) {
 		return
 	}
 
-	cacheDir := filepath.Join(os.Getenv("CACHE_DIR"),workspaceId)
-	localPath := filepath.Join(cacheDir, data.FilePath, data.FileName)
+	localPath := filepath.Join(data.FilePath, data.FileName)
 
 	file, err := os.Create(localPath)
 	if err != nil {
@@ -260,9 +286,12 @@ func handleCreateFile(payload json.RawMessage) {
 		sendResponse(false, "Error creating file: "+err.Error(), nil)
 		return
 	}
+	
+	// FIX: Explicitly allow all permissions
+	file.Chmod(0777)
+	file.Close() 
 
 	sendResponse(true, "File created successfully", nil)
-	defer file.Close()
 }
 
 func handleGetFile(payload json.RawMessage) {
@@ -316,47 +345,48 @@ func handleGetFile(payload json.RawMessage) {
 }
 
 func handleUpdateFile(payload json.RawMessage) {
-    type UpdateFile struct {
-        FilePath string `json:"filePath" validate:"required"`
-        Content  string `json:"content" validate:"required"` // Base64 encoded full content
-    }
+	type UpdateFile struct {
+		FilePath string `json:"filePath" validate:"required"`
+		Content  string `json:"content"` // Validation removed for empty content
+	}
 
-    var data UpdateFile
-    // Unmarshal
-    err := json.Unmarshal(payload, &data)
-    if err != nil {
-        fmt.Println("Error unmarshalling updateFile payload:", err)
-        sendResponse(false, "Error unmarshalling updateFile payload: "+err.Error(), nil)
-        return
-    }
-    // Validate
-    if err = validate.Struct(data); err != nil {
-        fmt.Println("Validation error:", err)
-        sendResponse(false, "Validation error: "+err.Error(), nil)
-        return
-    }
+	var data UpdateFile
+	// Unmarshal
+	err := json.Unmarshal(payload, &data)
+	if err != nil {
+		fmt.Println("Error unmarshalling updateFile payload:", err)
+		sendResponse(false, "Error unmarshalling updateFile payload: "+err.Error(), nil)
+		return
+	}
+	// Validate
+	if err = validate.Struct(data); err != nil {
+		fmt.Println("Validation error:", err)
+		sendResponse(false, "Validation error: "+err.Error(), nil)
+		return
+	}
 
-    // Construct local path
-    localPath := data.FilePath
+	localPath := data.FilePath
 
-    // Decode Base64 Content
-    decodedContent, err := base64.StdEncoding.DecodeString(data.Content)
-    if err != nil {
-        fmt.Println("Error decoding file content:", err)
-        sendResponse(false, "Error decoding file content: "+err.Error(), nil)
-        return
-    }
+	decodedContent, err := base64.StdEncoding.DecodeString(data.Content)
+	if err != nil {
+		fmt.Println("Error decoding file content:", err)
+		sendResponse(false, "Error decoding file content: "+err.Error(), nil)
+		return
+	}
 
-    // Write file (Overwrite)
-    // 0644 provides read/write for owner, read-only for others
-    err = os.WriteFile(localPath, decodedContent, 0644)
-    if err != nil {
-        fmt.Println("Error writing file:", err)
-        sendResponse(false, "Error writing file: "+err.Error(), nil)
-        return
-    }
+	// Write file (Overwrite)
+	// FIX: Use 0777 to ensure overwrite keeps it writable
+	err = os.WriteFile(localPath, decodedContent, 0777)
+	if err != nil {
+		fmt.Println("Error writing file:", err)
+		sendResponse(false, "Error writing file: "+err.Error(), nil)
+		return
+	}
+	
+	// Explicit chmod just in case WriteFile preserved old restrictive perms
+	os.Chmod(localPath, 0777)
 
-    sendResponse(true, "File updated successfully", nil)
+	sendResponse(true, "File updated successfully", nil)
 }
 
 func handleDeleteFile(payload json.RawMessage) {
@@ -371,8 +401,7 @@ func handleDeleteFile(payload json.RawMessage) {
 		return
 	}
 
-	cacheDir := filepath.Join(os.Getenv("CACHE_DIR"),workspaceId)
-	localPath := filepath.Join(cacheDir, data.FilePath, data.FileName)
+	localPath := filepath.Join(data.FilePath, data.FileName)
 	err = os.Remove(localPath)
 	if err != nil {
 		fmt.Println("Error deleting file:", err)
@@ -396,22 +425,25 @@ func handleCreateFolder(payload json.RawMessage) {
 		return
 	}
 
-	cacheDir := filepath.Join(os.Getenv("CACHE_DIR"),workspaceId)
-	localPath := filepath.Join(cacheDir, data.FolderPath, data.FolderName)
-	err = os.MkdirAll(localPath, 0755)
+	localPath := filepath.Join(data.FolderPath, data.FolderName)
+	
+	// FIX: MkdirAll + explicit Chmod
+	err = os.MkdirAll(localPath, 0777)
 	if err != nil {
 		fmt.Println("Error creating folder:", err)
 		sendResponse(false, "Error creating folder: "+err.Error(), nil)
 		return
 	}
+	
+	// Explicitly chmod to defeat umask
+	os.Chmod(localPath, 0777)
 
 	sendResponse(true, "Folder created successfully", nil)
-
 }
 
 func handleDeleteFolder(payload json.RawMessage) {
 	var data struct {
-		FolderPath string `json:"filePath" validate:"required"`
+		FolderPath string `json:"folderPath" validate:"required"`
 	}
 	err := json.Unmarshal(payload, &data)
 	if err != nil {
@@ -419,9 +451,9 @@ func handleDeleteFolder(payload json.RawMessage) {
 		sendResponse(false, "Error unmarshalling deleteFolder payload: "+err.Error(), nil)
 		return
 	}
-
-	cacheDir := filepath.Join(os.Getenv("CACHE_DIR"),workspaceId)
-	localPath := filepath.Join(cacheDir, data.FolderPath)
+	
+	localPath := data.FolderPath
+	
 	err = os.RemoveAll(localPath)
 	if err != nil {
 		fmt.Println("Error deleting file:", err)
@@ -472,33 +504,50 @@ func handleRequestTerminal(payload json.RawMessage) {
 
 func handleGetTree(payload json.RawMessage) {
 	var data struct {
-		Path string `json:"path"`
-		Name string `json:"name"`
+		WorkspaceId string `json:"workspaceId"`
 	}
-	fmt.Println("Inside Handle Get Tree:", payload)
 
 	err := json.Unmarshal(payload, &data)
-	if err != nil{
-		fmt.Println("Error Unmarshaling handleGetTree payload: ",err)
-		sendResponse(false,"Error Unmarshaling handleGetTree payload: "+err.Error(), nil)
+	if err != nil {
+		fmt.Println("Error unmarshalling getTree payload:", err)
+		sendResponse(false, "Error unmarshalling getTree payload: "+err.Error(), nil)
 		return
 	}
 
-	Tree, err := generateTree(data.Path, data.Name)
-	if err != nil{
+	// Use the ID from payload, or fallback to global if connected in same session
+	// But relying on payload is safer for refreshes
+	targetId := data.WorkspaceId
+	if targetId == "" {
+		targetId = workspaceId
+	}
+	
+	if targetId == "" {
+		sendResponse(false, "WorkspaceId not found", nil)
+		return
+	}
+
+	// Reconstruct path
+	currentCachePath := filepath.Join(os.Getenv("CACHE_DIR"), targetId)
+
+	tree, err := generateTree(currentCachePath, targetId)
+	if err != nil {
 		fmt.Println("Error Walking Path/Path Does not exist: ", err)
 		sendResponse(false, "Error Walking Path/Path Does not exist: "+err.Error(), nil)
 		return
 	}
 
-	response, err := json.Marshal(Tree)
-	if err != nil{
-		fmt.Println("Error Marshaling Tree: ",Tree,"\nError:", err)
-		sendResponse(false,"Error Marshaling Tree: "+err.Error(),nil)
-		return	
+	type getTreeResponse struct {
+		Tree FileNode `json:"tree"`
 	}
-	fmt.Println("Generated Tree: ",Tree)
-	sendResponse(true,"Succesfully generated tree",response)
+	response, err := json.Marshal(getTreeResponse{Tree: tree})
+	if err != nil {
+		fmt.Println("Error Marshaling Tree: ", tree, "\nError:", err)
+		sendResponse(false, "Error Marshaling Tree: "+err.Error(), nil)
+		return
+	}
+	// Note: backend logs might be verbose
+	// fmt.Println("Generated Tree: ", tree)
+	sendResponse(true, "Succesfully generated tree", response)
 }
 
 func generateTree(path string, name string) (FileNode, error) {
@@ -510,19 +559,19 @@ func generateTree(path string, name string) (FileNode, error) {
 	}
 
 	var Tree FileNode
-	Tree.Name = name	
+	Tree.Name = name
 	Tree.Type = "folder"
 	Tree.Path = path
 
 	for _, entry := range enteries {
 		var child FileNode
 		if entry.IsDir() {
-			child,_ = generateTree(filepath.Join(path,entry.Name()),entry.Name())
+			child, _ = generateTree(filepath.Join(path, entry.Name()), entry.Name())
 		} else {
 			child.Name = entry.Name()
 			child.Type = "file"
 			child.Children = nil
-			child.Path = filepath.Join(path,entry.Name())
+			child.Path = filepath.Join(path, entry.Name())
 		}
 		Tree.Children = append(Tree.Children, child)
 	}

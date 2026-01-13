@@ -1,0 +1,7 @@
+# Install these packages using pip:
+# pip install -r requirements.txt
+requests==2.25.1
+flask==1.1.2
+numpy==1.19.5
+pandas==1.1.5
+

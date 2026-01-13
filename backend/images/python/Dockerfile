@@ -6,16 +6,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     curl \
-    ca-certificates && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-ARG UID=1000
-ARG UNAME=dev
+RUN groupadd -g 1500 dev && \
+    useradd -m -u 1500 -g dev -s /bin/bash dev
 
-RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} || true \
- && mkdir -p /workspace \
- && chown -R ${UID}:${UID} /workspace
+RUN mkdir -p /workspace \
+    && chown dev:dev /workspace
+
+USER dev
+
+ENV PIP_USER=true
+ENV PATH="/home/dev/.local/bin:${PATH}"
 
 WORKDIR /workspace
-USER ${UNAME}
-
 CMD [ "/bin/bash" ]

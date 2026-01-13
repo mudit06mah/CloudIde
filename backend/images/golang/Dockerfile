@@ -1,23 +1,18 @@
-FROM golang:1.21-bullseye
-
-ENV DEBIAN_FRONTEND=noninteractive
+FROM gcc:12-bullseye
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     git \
     curl \
-    ca-certificates && rm -rf /var/lib/apt/lists/*
+    cmake \
+    gdb \
+    && rm -rf /var/lib/apt/lists/*
 
-ARG UID=1000
+RUN groupadd -g 1500 dev && \
+    useradd -m -u 1500 -g dev -s /bin/bash dev
 
-ARG UID=1000
-ARG UNAME=dev
+RUN mkdir -p /workspace && chown dev:dev /workspace
 
-RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} || true \
- && mkdir -p /workspace \
- && chown -R ${UID}:${UID} /workspace
- 
+USER dev
+
 WORKDIR /workspace
-USER ${UNAME}
-
 CMD [ "/bin/bash" ]

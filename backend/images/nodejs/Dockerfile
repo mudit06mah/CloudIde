@@ -1,25 +1,21 @@
-FROM node:18-bullseye-slim
-
-ENV DEBIAN_FRONTEND=noninteractive
+FROM node:20-bullseye-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     git \
     curl \
     ca-certificates \
-    passwd \
- && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*
 
-ARG UID=1500
-ARG UNAME=dev
+# Create user 'dev' with ID 1500
+RUN groupadd -g 1500 dev && \
+    useradd -m -u 1500 -g dev -s /bin/bash dev
 
-RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} \
- && mkdir -p /workspace \
- && chown -R ${UID}:${UID} /workspace
+RUN mkdir -p /workspace && chown dev:dev /workspace
+
+USER dev
+
+ENV NPM_CONFIG_PREFIX=/home/dev/.npm-global
+ENV PATH=$PATH:/home/dev/.npm-global/bin
 
 WORKDIR /workspace
-
-# Let user pick user at runtime; default to root
-CMD ["/bin/bash"]
-
-EXPOSE 5173
+CMD [ "/bin/bash" ]
