@@ -20,8 +20,8 @@ export default function Home() {
         const unsubscribe = subscribe("Project created successfully", (payload: any) => {
             setLoading(false);
             unsubscribe();
-            // Payload contains { workspaceId: "...", tree: ... }
-            navigate(`/workspace/${payload.workspaceId}`, { state: { tree: payload.tree } });
+            console.log(payload)
+            navigate(`/workspace/${payload.workspaceId}`, { state: { tree: payload.fileNode } });
         });
 
         const typeMap: Record<string, string> = {

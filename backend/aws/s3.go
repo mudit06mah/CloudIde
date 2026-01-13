@@ -58,7 +58,7 @@ func DownloadTemplate( projectType string, workspaceId string ) (string, error) 
             Key:    &key,
         })
         if err != nil{
-            return "", fmt.Errorf("fqailed to get object %s: %v", key, err)
+            return "", fmt.Errorf("failed to get object %s: %v", key, err)
         }
         defer out.Body.Close()
 

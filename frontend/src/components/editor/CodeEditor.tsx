@@ -5,10 +5,9 @@ import { useSocket } from '../../utils/Socket';
 interface EditorProps {
     initialContent: string;
     filePath: string;
-    rootPath?: string;
 }
 
-export default function CodeEditor({ initialContent, filePath, rootPath }: EditorProps) {
+export default function CodeEditor({ initialContent, filePath }: EditorProps) {
     const { sendMessage } = useSocket();
     // Fix: Use ReturnType<typeof setTimeout> instead of NodeJS.Timeout
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,26 +37,10 @@ export default function CodeEditor({ initialContent, filePath, rootPath }: Edito
             // Encode content to base64 to avoid JSON breaking on special chars
             // Note: In a production app, consider using a library like 'js-base64' for better UTF-8 support
             const encodedContent = btoa(value);
-            
-            // Calculate relative path if needed, or pass exact path required by backend
-            const fileName = filePath.split("/").pop() || "";
-            // Assuming filePath matches what backend expects or we derive it:
-            // If backend expects relative to root, ensure filePath is correct.
-            // Here we send the raw filePath assuming it matches the tree structure.
-            
-            // We strip the rootPath if present to ensure we send a relative path to the project root
-            let relativePath = filePath;
-            if (rootPath && filePath.startsWith(rootPath)) {
-                // Remove rootPath and leading slash
-                relativePath = filePath.substring(rootPath.length).replace(/^\//, "");
-            }
-            // Further strip filename to get just the directory
-            const dirPath = relativePath.substring(0, relativePath.lastIndexOf("/"));
 
             sendMessage("updateFile", {
-                fileName: fileName,
-                filePath: dirPath, // Backend expects path to folder
-                content: encodedContent // Sending FULL content now
+                filePath: filePath, 
+                content: encodedContent
             });
             
         }, 1000);

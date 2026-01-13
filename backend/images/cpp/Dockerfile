@@ -1,21 +1,17 @@
-FROM debian:bookworm-slim
-
-ENV DEBIAN_FRONTEND=noninteractive
+FROM gcc:12-bullseye
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
     git \
     curl \
-    ca-certificates && rm -rf /var/lib/apt/lists/*
+    cmake \
+    gdb \
+    && rm -rf /var/lib/apt/lists/*
 
-ARG UID=1000
-ARG UNAME=dev
+RUN useradd -m -u 1000 -s /bin/bash dev
 
-RUN useradd -m -u ${UID} -s /bin/bash ${UNAME} || true \
- && mkdir -p /workspace \
- && chown -R ${UID}:${UID} /workspace
- 
+RUN mkdir -p /workspace && chown dev:dev /workspace
+
+USER dev
+
 WORKDIR /workspace
-USER ${UNAME}
-
 CMD [ "/bin/bash" ]

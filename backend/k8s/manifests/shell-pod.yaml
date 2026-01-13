@@ -6,6 +6,12 @@ metadata:
   labels:
     workspace: {{WORKSPACE_ID}}
 spec:
+  # DNS Fix for pip/npm network issues
+  dnsPolicy: None
+  dnsConfig:
+    nameservers:
+      - 8.8.8.8
+      - 1.1.1.1
   restartPolicy: Never
   containers:
   - name: shell
@@ -18,8 +24,8 @@ spec:
     - name: workspace
       mountPath: /workspace
     securityContext:
-      runAsUser: 1500
-      runAsGroup: 1500
+      runAsUser: 1000
+      runAsGroup: 1000
       allowPrivilegeEscalation: false
   volumes:
   - name: workspace
