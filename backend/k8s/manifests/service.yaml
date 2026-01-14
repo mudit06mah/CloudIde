@@ -1,18 +1,17 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: svc-{{WORKSPACE_ID}}
+  name: shell-{{WORKSPACE_ID}}
   namespace: cloud-ide
-  labels:
-    app: svc-runner
-    ws: {{WORKSPACE_ID}}
 spec:
   selector:
-    app: svc-runner
-    ws: {{WORKSPACE_ID}}
+    workspace: {{WORKSPACE_ID}}
   ports:
   - name: http
+    protocol: TCP
     port: 80
+    targetPort: 80
+  - name: vite
+    protocol: TCP
+    port: 5173
     targetPort: 5173
-  type: ClusterIP
-    

@@ -21,7 +21,7 @@ export default function Home() {
             setLoading(false);
             unsubscribe();
             console.log(payload)
-            navigate(`/workspace/${payload.workspaceId}`, { state: { tree: payload.fileNode } });
+            navigate(`/workspace/${payload.workspaceId}`, { state: { tree: payload.fileNode }});
         });
 
         const typeMap: Record<string, string> = {

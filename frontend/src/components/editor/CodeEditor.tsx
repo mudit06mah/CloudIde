@@ -14,7 +14,7 @@ export default function CodeEditor({ initialContent, filePath }: EditorProps) {
 
     // Determine language based on extension
     const getLanguage = (path: string) => {
-        if (path.endsWith('.js')) return 'javascript';
+        if (path.endsWith('.js') || path.endsWith('.jsx')) return 'javascript';
         if (path.endsWith('.ts') || path.endsWith('.tsx')) return 'typescript';
         if (path.endsWith('.py')) return 'python';
         if (path.endsWith('.go')) return 'go';

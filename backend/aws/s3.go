@@ -24,6 +24,8 @@ func DownloadTemplate( projectType string, workspaceId string ) (string, error) 
             prefix = "templates/golang/"
         case "cpp":
             prefix = "templates/cpp/"
+        case "react":
+            prefix = "templates/react/"
         default:
             return "", fmt.Errorf("unsupported project type: %s", projectType)
     }

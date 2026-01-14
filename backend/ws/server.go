@@ -1,45 +1,60 @@
 package ws
 
 import (
-	"fmt"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/gorilla/websocket"
+	"github.com/mudit06mah/CloudIde/k8s"
 )
 
-var workspaces = make(map[string]string)
-
-// initialize ws server
+// StartWebSocketServer initializes the router
 func StartWebSocketServer() error {
-	
 	wsPort := os.Getenv("WS_PORT")
+	if wsPort == "" {
+		wsPort = "8080"
+	}
 
 	http.HandleFunc("/ws", wsHandler)
 	log.Println("WebSocket server started on port:", wsPort)
 	return http.ListenAndServe(":"+wsPort, nil)
 }
 
-func wsHandler(w http.ResponseWriter, r *http.Request){
+func wsHandler(w http.ResponseWriter, r *http.Request) {
 	query := r.URL.Query()
 	connType := query.Get("type")
-	
-	switch(connType){
+
+	switch connType {
 	case "terminal":
+		// 1. Get Pod Name
 		podName := query.Get("pod")
-		if podName == ""{
-			http.Error(w,"Query missing pod name",http.StatusBadRequest)
+		if podName == "" {
+			http.Error(w, "Query missing pod name", http.StatusBadRequest)
 			return
 		}
 
-		HandleTerminal(w,r,client.Clientset,client.Config,podName)
+		// 2. Get Workspace ID (The Fix)
+		workspaceId := query.Get("workspaceId")
+		if workspaceId == "" {
+			http.Error(w, "Query missing workspaceId", http.StatusBadRequest)
+			return
+		}
+
+		// 3. Create K8s Client using the REAL Workspace ID
+		k8sClient, err := k8s.NewK8sClient(workspaceId)
+		if err != nil {
+			http.Error(w, "Failed to create K8s client: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		HandleTerminal(w, r, k8sClient.Clientset, k8sClient.Config, podName)
 		return
-	
+
 	default:
-		handleWebSocket(w,r)
+		// IDE Logic (File Tree, Editor, etc.)
+		handleWebSocket(w, r)
 	}
-	
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -48,27 +63,27 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			return true
 		},
 	}
-	
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		http.Error(w, "Failed to upgrade connection", http.StatusInternalServerError)
+		log.Println("Failed to upgrade connection:", err)
 		return
 	}
-	defer conn.Close()
+	// Note: We don't defer conn.Close() here because Session manages it, 
+	// or we rely on the loop breaking. 
+	// Ideally, Session should own the connection lifecycle.
+	
+	session := NewSession(conn)
+	defer conn.Close() // Close when loop breaks
 
-	// Handle messages from the client
+	// Listen for messages
 	for {
-		messageType, msg, err := conn.ReadMessage()
+		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			fmt.Println("Error reading message:", err)
+			// Remove session logic could go here
 			break
 		}
-
-		messageHandler(conn,msg)
-
-		if err := conn.WriteMessage(messageType, msg); err != nil {
-			fmt.Println("Error writing message:", err)
-			break
-		}
+		// Route message to the specific session instance
+		session.HandleMessage(msg)
 	}
 }

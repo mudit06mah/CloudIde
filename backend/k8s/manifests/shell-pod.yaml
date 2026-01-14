@@ -6,7 +6,6 @@ metadata:
   labels:
     workspace: {{WORKSPACE_ID}}
 spec:
-  # DNS Fix for pip/npm network issues
   dnsPolicy: None
   dnsConfig:
     nameservers:
@@ -20,15 +19,23 @@ spec:
     tty: true
     workingDir: /workspace
     command: ["/bin/bash", "-lc", "cd /workspace; exec bash"]
-    volumeMounts:
-    - name: workspace
-      mountPath: /workspace
     securityContext:
       runAsUser: 1000
       runAsGroup: 1000
       allowPrivilegeEscalation: false
+    volumeMounts:
+    - name: workspace
+      mountPath: /workspace
+    # --- ADD THIS: Mount emptyDir over node_modules ---
+    - name: node-modules
+      mountPath: /workspace/node_modules
+    # --------------------------------------------------
   volumes:
   - name: workspace
     hostPath:
       path: /cache/{{WORKSPACE_ID}}
       type: Directory
+  # --- ADD THIS: The virtual volume definition ---
+  - name: node-modules
+    emptyDir: {}
+  # -----------------------------------------------

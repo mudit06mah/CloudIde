@@ -1,19 +1,31 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: ingress-{{WORKSPACE_ID}}
+  name: shell-{{WORKSPACE_ID}}
   namespace: cloud-ide
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
 spec:
+  ingressClassName: nginx
   rules:
-  - host: {{HOST}}
+  # Rule 1: Terminal/WebSocket Access
+  - host: {{WORKSPACE_ID}}.127.0.0.1.nip.io
     http:
       paths:
       - path: /
         pathType: Prefix
         backend:
           service:
-            name: svc-{{WORKSPACE_ID}}
+            name: shell-{{WORKSPACE_ID}}
             port:
               number: 80
+              
+  # Rule 2: React Preview Access (Vite)
+  - host: {{WORKSPACE_ID}}-preview.127.0.0.1.nip.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: shell-{{WORKSPACE_ID}}
+            port:
+              number: 5173

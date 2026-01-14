@@ -62,12 +62,12 @@ var ProjectTemplateConfig = map[string]ProjectTemplate{
 		},
 	},
 	"react": {
-		image: "ghcr.io/mudit06mah/shell-react:latest",
+		image: "ghcr.io/mudit06mah/shell-nodejs:latest",
 		resources: map[string]ResourceTemplate{
 			"shellPod": {
 				templatePath: "./k8s/manifests/shell-pod.yaml",
 				variables: map[string]string{
-					"SHELL_IMAGE": "ghcr.io/mudit06mah/shell-react:latest",
+					"SHELL_IMAGE": "ghcr.io/mudit06mah/shell-nodejs:latest",
 				},
 			},
 			"service": {
@@ -119,7 +119,7 @@ func (c *Client) RenderProjectResources(projectType string) ([][]byte, error) {
 
 		// Dynamic Values (todo: recheck this)
 		if resourceName == "ingress" {
-			allVars["HOST"] = workspaceId+".localhost"
+			allVars["HOST"] = workspaceId + ".localhost"
 		}
 
 		manifest, err := RenderTemplate(resourceTemplate.templatePath, allVars)

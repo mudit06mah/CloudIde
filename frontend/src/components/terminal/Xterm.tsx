@@ -1,81 +1,95 @@
-import { useEffect, useRef } from "react";
-import { Terminal } from "xterm";
-import { FitAddon } from "xterm-addon-fit";
-import "xterm/css/xterm.css";
+import { useEffect, useRef } from 'react';
+import { Terminal } from 'xterm';
+import { FitAddon } from 'xterm-addon-fit';
+import 'xterm/css/xterm.css';
+import { AttachAddon } from 'xterm-addon-attach';
 
-export default function Xterm({ workspaceId }: { workspaceId: string }) {
-    const terminalRef = useRef<HTMLDivElement | null>(null);
-    const wsRef = useRef<WebSocket | null>(null);
+interface XtermProps {
+    workspaceId: string;
+}
+
+const Xterm = ({ workspaceId }: XtermProps) => {
+    const terminalRef = useRef<HTMLDivElement>(null);
+    const socketRef = useRef<WebSocket | null>(null);
 
     useEffect(() => {
-        // Connect to the specific terminal endpoint
-        // Assuming pod name is 'shell-<workspaceId>' based on your backend logic
-        const ws = new WebSocket(`ws://localhost:8080/ws?type=terminal&pod=shell-${workspaceId}`);
-        wsRef.current = ws;
+        if (!workspaceId) return;
 
+        // 1. Initialize Terminal
         const term = new Terminal({
             cursorBlink: true,
             theme: {
-                background: '#000000',
-                foreground: '#ffffff',
+                background: "#020617",
+                foreground: "#f8fafc",
             },
+            fontSize: 14,
             fontFamily: "'JetBrains Mono', monospace",
         });
-        
+
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
-
+        
         if (terminalRef.current) {
             term.open(terminalRef.current);
             fitAddon.fit();
         }
 
-        // Send input to backend
-        term.onData((data) => {
-            if (ws.readyState === WebSocket.OPEN) {
-                // Protocol: Op "stdin", Data string
-                const msg = JSON.stringify({ op: "stdin", data: data });
-                ws.send(msg);
-            }
-        });
-
-        // Handle resize
-        term.onResize((size) => {
-            if (ws.readyState === WebSocket.OPEN) {
-                // Protocol: Op "resize", Cols, Rows
-                const msg = JSON.stringify({ op: "resize", cols: size.cols, rows: size.rows });
-                ws.send(msg);
-            }
-        });
-
-        ws.onmessage = (event) => {
-            // Backend sends raw text (not JSON) for stdout based on wsWriter?
-            // Wait, terminal.go uses `ws.WriteMessage(websocket.TextMessage, p)`.
-            // It sends raw bytes from the PTY.
-            if(typeof event.data === 'string') {
-                 term.write(event.data);
-            } else {
-                 // Handle blob if necessary
-                 const reader = new FileReader();
-                 reader.onload = () => {
-                     term.write(reader.result as string);
-                 };
-                 reader.readAsText(event.data);
+        // 2. Connect to WebSocket
+        // FIX: Added 'workspaceId' query param so backend can initialize the K8s Client
+        const socket = new WebSocket(
+            `ws://localhost:8080/ws?type=terminal&pod=shell-${workspaceId}&workspaceId=${workspaceId}`
+        );
+        
+        socket.onopen = () => {
+            // Attach the socket to xterm
+            const attachAddon = new AttachAddon(socket);
+            term.loadAddon(attachAddon);
+            
+            // Send a resize immediately to fix layout
+            const dims = fitAddon.proposeDimensions();
+            if (dims) {
+                fitAddon.fit();
+                // Optional: Send initial resize opcode if your backend expects it
+                socket.send(JSON.stringify({ 
+                    op: "resize", 
+                    cols: dims.cols, 
+                    rows: dims.rows 
+                }));
             }
         };
 
-        const handleResizeWindow = () => fitAddon.fit();
-        window.addEventListener("resize", handleResizeWindow);
+        socket.onerror = (err) => {
+            console.error("Terminal WebSocket Error:", err);
+            term.write("\r\n\x1b[31mConnection Error. Please refresh.\x1b[0m\r\n");
+        };
 
+        socketRef.current = socket;
+
+        // 3. Handle Resize
+        const handleResize = () => {
+            if (socket.readyState === WebSocket.OPEN) {
+                const dims = fitAddon.proposeDimensions();
+                if (dims) {
+                    fitAddon.fit();
+                    socket.send(JSON.stringify({ 
+                        op: "resize", 
+                        cols: dims.cols, 
+                        rows: dims.rows 
+                    }));
+                }
+            }
+        };
+        window.addEventListener('resize', handleResize);
+
+        // 4. Cleanup
         return () => {
-            window.removeEventListener("resize", handleResizeWindow);
+            window.removeEventListener('resize', handleResize);
+            socket.close();
             term.dispose();
-            ws.close();
         };
-
     }, [workspaceId]);
 
-    return (
-        <div ref={terminalRef} className="w-full h-full bg-black pl-2 pt-2" />
-    );
-}
+    return <div ref={terminalRef} className="h-full w-full bg-slate-950 px-2" />;
+};
+
+export default Xterm;

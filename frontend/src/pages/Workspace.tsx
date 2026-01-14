@@ -5,6 +5,7 @@ import Folder from "../components/tree/Folder";
 import CodeEditor from "../components/editor/CodeEditor";
 import Xterm from "../components/terminal/Xterm";
 import { VscNewFile, VscNewFolder, VscRefresh } from "react-icons/vsc";
+import { FaExternalLinkAlt } from "react-icons/fa";
 
 interface FileNode {
     name: string;
@@ -25,24 +26,29 @@ export default function Workspace() {
     
     const [selectedFile, setSelectedFile] = useState<{ path: string, content: string } | null>(null);
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-    
-    // Creating State: Where and what are we creating?
     const [creatingConfig, setCreatingConfig] = useState<{ parentPath: string; type: "file" | "folder" } | null>(null);
 
-    // 1. Handle Refresh: Fetch tree if missing
+    // Dynamic Preview URL (using nip.io for domain-less setup)
+    const previewUrl = `http://${workspaceId}-preview.127.0.0.1.nip.io`;
+
+    // 1. Check if this is a React Project based on file structure
+    // We look for 'index.html' or 'vite.config.js' in the root
+    const isReactProject = fileTree?.children?.some(child => 
+        child.name === "index.html" || 
+        child.name === "vite.config.js" || 
+        child.name === "vite.config.ts"
+    );
+
     useEffect(() => {
         if (!fileTree && workspaceId) {
             sendMessage("getTree", { workspaceId });
         }
     }, [fileTree, workspaceId, sendMessage]);
 
-    // 2. Listen for Tree Updates (Refreshes file explorer)
     useEffect(() => {
         const unsubscribe = subscribe("Succesfully generated tree", (payload: any) => {
-            console.log(payload)
             if (payload.tree) {
                 setFileTree(payload.tree);
-                // Default selection to root if nothing selected
                 if (!selectedFolder) {
                     setSelectedFolder(payload.tree.path);
                 }
@@ -53,51 +59,34 @@ export default function Workspace() {
 
     const handleNodeSelect = (node: FileNode) => {
         if (node.type === "file") {
-            // Fetch File Content
             const unsubscribe = subscribe("File retrieved successfully", (payload: any) => {
                 setSelectedFile({ path: node.path, content: payload.content });
                 unsubscribe();
             });
-            sendMessage("getFile", { filePath: node.path }); // Using path directly
+            sendMessage("getFile", { filePath: node.path });
         } else {
-            // Just select the folder for potential creation context
             setSelectedFolder(node.path);
         }
     };
 
     const initiateCreate = (type: "file" | "folder") => {
-        if (!selectedFolder) return; // Should visually disable buttons if no folder selected
+        if (!selectedFolder) return;
         setCreatingConfig({ parentPath: selectedFolder, type });
     };
 
     const handleCreateSubmit = (name: string, parentPath: string, type: "file" | "folder") => {
         const messageType = type === "file" ? "createFile" : "createFolder";
-        // Payload using the path directly from the node
         const payload = type === "file" 
             ? { fileName: name, filePath: parentPath } 
             : { folderName: name, folderPath: parentPath };
+
         sendMessage(messageType, payload);
-        
-        // Cleanup UI
         setCreatingConfig(null);
-        
-        // Refresh Tree
-        // Note: You might want to listen to "File created successfully" to trigger this,
-        // but a quick timeout works for immediate feedback in prototypes.
-        setTimeout(() => {
-            sendMessage("getTree", { workspaceId });
-        }, 200);
+        setTimeout(() => sendMessage("getTree", { workspaceId }), 200);
     };
 
     const handleDeleteNode = (path: string, type: "file" | "folder", name: string) => {
         const messageType = type === "file" ? "deleteFile" : "deleteFolder";
-        // Use path directly. For backend compatibility, we might need to split 
-        // if backend expects 'path' AND 'name' separately. 
-        // Based on your handlers.go: 
-        // deleteFile expects { fileName, filePath }
-        // deleteFolder expects { folderPath } which seems to be the full path?
-        
-        // Let's derive directory for files to match backend expectation
         const dirPath = path.substring(0, path.lastIndexOf("/"));
         
         const payload = type === "file" 
@@ -105,16 +94,29 @@ export default function Workspace() {
             : { folderPath: path }; 
 
         sendMessage(messageType, payload);
-
-        setTimeout(() => {
-            sendMessage("getTree", { workspaceId });
-        }, 200);
+        setTimeout(() => sendMessage("getTree", { workspaceId }), 200);
     };
 
     return (
         <div className="h-screen flex flex-col bg-slate-950 text-slate-300 overflow-hidden">
+            {/* TOP HEADER */}
             <div className="h-10 border-b border-slate-800 flex items-center px-4 bg-slate-900 justify-between">
-                <span className="font-mono text-sm text-slate-400">workspace: <span className="text-blue-400">{workspaceId}</span></span>
+                <div className="flex items-center gap-2">
+                    <span className="font-mono text-sm text-slate-400">workspace: <span className="text-blue-400">{workspaceId}</span></span>
+                </div>
+
+                {isReactProject && (
+                    <a 
+                        href={previewUrl} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded flex items-center gap-2 transition-colors font-medium"
+                        title="Open Preview"
+                    >
+                        <span>Preview</span>
+                        <FaExternalLinkAlt size={10} />
+                    </a>
+                )}
             </div>
             
             <div className="flex-1 flex overflow-hidden">
@@ -123,25 +125,13 @@ export default function Workspace() {
                     <div className="p-3 flex items-center justify-between text-xs font-bold text-slate-500 uppercase tracking-wider bg-slate-900 sticky top-0 z-10">
                         <span>Explorer</span>
                         <div className="flex gap-3 text-slate-400">
-                            <button 
-                                onClick={() => initiateCreate("file")} 
-                                className="hover:text-blue-400 transition-colors"
-                                title="New File"
-                            >
+                            <button onClick={() => initiateCreate("file")} className="hover:text-blue-400 transition-colors" title="New File">
                                 <VscNewFile size={16} />
                             </button>
-                            <button 
-                                onClick={() => initiateCreate("folder")} 
-                                className="hover:text-blue-400 transition-colors"
-                                title="New Folder"
-                            >
+                            <button onClick={() => initiateCreate("folder")} className="hover:text-blue-400 transition-colors" title="New Folder">
                                 <VscNewFolder size={16} />
                             </button>
-                            <button 
-                                onClick={() => sendMessage("getTree", { workspaceId })} 
-                                className="hover:text-green-400 transition-colors"
-                                title="Refresh"
-                            >
+                            <button onClick={() => sendMessage("getTree", { workspaceId })} className="hover:text-green-400 transition-colors" title="Refresh">
                                 <VscRefresh size={16} />
                             </button>
                         </div>
@@ -171,7 +161,6 @@ export default function Workspace() {
                             <CodeEditor 
                                 initialContent={selectedFile.content} 
                                 filePath={selectedFile.path} 
-                                // No rootPath needed based on your request
                             />
                         ) : (
                             <div className="h-full flex items-center justify-center text-slate-600">
