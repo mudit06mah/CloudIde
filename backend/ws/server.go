@@ -27,21 +27,18 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 	switch connType {
 	case "terminal":
-		// 1. Get Pod Name
 		podName := query.Get("pod")
 		if podName == "" {
 			http.Error(w, "Query missing pod name", http.StatusBadRequest)
 			return
 		}
 
-		// 2. Get Workspace ID (The Fix)
 		workspaceId := query.Get("workspaceId")
 		if workspaceId == "" {
 			http.Error(w, "Query missing workspaceId", http.StatusBadRequest)
 			return
 		}
 
-		// 3. Create K8s Client using the REAL Workspace ID
 		k8sClient, err := k8s.NewK8sClient(workspaceId)
 		if err != nil {
 			http.Error(w, "Failed to create K8s client: "+err.Error(), http.StatusInternalServerError)
@@ -52,7 +49,6 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 
 	default:
-		// IDE Logic (File Tree, Editor, etc.)
 		handleWebSocket(w, r)
 	}
 }
@@ -69,18 +65,16 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		log.Println("Failed to upgrade connection:", err)
 		return
 	}
-	// Note: We don't defer conn.Close() here because Session manages it, 
-	// or we rely on the loop breaking. 
-	// Ideally, Session should own the connection lifecycle.
-	
-	session := NewSession(conn)
-	defer conn.Close() // Close when loop breaks
+	defer conn.Close()
 
-	// Listen for messages
+	session := NewSession(conn)
+	workspaceId := r.URL.Query().Get("workspaceId")
+	defer session.cleanup(workspaceId)
+
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
-			// Remove session logic could go here
+			// Log disconnection if needed
 			break
 		}
 		// Route message to the specific session instance

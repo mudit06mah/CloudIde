@@ -61,18 +61,20 @@ func (w *WSWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-// --- Session Logic ---
+// --- Session Logic (NO GLOBALS) ---
 
 var validate = validator.New()
 
+const namespace = "cloud-ide"
+
 // Session holds the state for ONE specific user connection
 type Session struct {
+	ProjectType string
 	Conn        *websocket.Conn
 	WorkspaceID string
 	K8sClient   *k8s.Client
 }
 
-// NewSession creates a new session wrapper for a connection
 func NewSession(conn *websocket.Conn) *Session {
 	return &Session{
 		Conn: conn,
@@ -108,14 +110,15 @@ func (s *Session) HandleMessage(rawMsg []byte) {
 		s.handleRequestTerminal(msg.Payload)
 	case "getTree":
 		s.handleGetTree(msg.Payload)
+	case "stopWorkspace":
+		s.handleStopWorkspace(msg.Payload)
 	default:
 		fmt.Println("Unknown message type:", msg.Type)
 		s.sendResponse(false, "Unknown message type: "+msg.Type, nil)
 	}
 }
 
-// --- Helper Methods ---
-
+// helper functions:
 func (s *Session) sendResponse(success bool, message string, payload json.RawMessage) {
 	response := Response{
 		Success: success,
@@ -127,7 +130,6 @@ func (s *Session) sendResponse(success bool, message string, payload json.RawMes
 		fmt.Println("Error marshalling response:", err)
 		return
 	}
-	// Write to THIS session's connection
 	err = s.Conn.WriteMessage(websocket.TextMessage, respBytes)
 	if err != nil {
 		fmt.Println("Error sending response:", err)
@@ -140,12 +142,8 @@ func createWorkspaceId(size int) string {
 	for i := 0; i < size; i++ {
 		id += string(charset[rand.Intn(len(charset))])
 	}
-	// Note: We removed the global map check for simplicity/concurrency safety.
-	// In production, check DB or Redis here.
 	return id
 }
-
-// --- Session Handlers ---
 
 func (s *Session) handleCreateProject(payload json.RawMessage) {
 	type CreateProjectData struct {
@@ -161,23 +159,20 @@ func (s *Session) handleCreateProject(payload json.RawMessage) {
 		return
 	}
 
-	// 1. Set Session State
 	s.WorkspaceID = createWorkspaceId(10)
+	s.ProjectType = data.ProjectType
 	currentCachePath := filepath.Join(os.Getenv("CACHE_DIR"), s.WorkspaceID)
 
-	// 2. Setup FS
 	if err := os.MkdirAll(currentCachePath, 0755); err != nil {
 		s.sendResponse(false, "Error creating cache dir: "+err.Error(), nil)
 		return
 	}
 
-	// 3. Download Template
 	if _, err := aws.DownloadTemplate(data.ProjectType, s.WorkspaceID); err != nil {
 		s.sendResponse(false, "Error downloading template: "+err.Error(), nil)
 		return
 	}
 
-	// 4. Setup K8s Client for THIS Session
 	var err error
 	s.K8sClient, err = k8s.NewK8sClient(s.WorkspaceID)
 	if err != nil {
@@ -185,7 +180,6 @@ func (s *Session) handleCreateProject(payload json.RawMessage) {
 		return
 	}
 
-	// 5. Deploy Resources
 	ctx := context.Background()
 	manifests, err := s.K8sClient.RenderProjectResources(data.ProjectType)
 	if err != nil {
@@ -196,15 +190,12 @@ func (s *Session) handleCreateProject(payload json.RawMessage) {
 		s.K8sClient.ApplyManifest(ctx, manifest)
 	}
 
-	// 6. Wait for Pod
-	namespace := "cloud-ide" // hardcoded for now, or match your server.go
 	_, err = s.K8sClient.WaitForPodByLabel(ctx, namespace, fmt.Sprintf("workspace=%s", s.WorkspaceID), 300*time.Second)
 	if err != nil {
 		s.sendResponse(false, "Error waiting for pod: "+err.Error(), nil)
 		return
 	}
 
-	// 7. Return Tree
 	tree, _ := generateTree(currentCachePath, s.WorkspaceID)
 	type ProjectPayload struct {
 		WorkspaceId string   `json:"workspaceId"`
@@ -220,15 +211,24 @@ func (s *Session) handleCreateFile(payload json.RawMessage) {
 		FilePath string `json:"filePath"`
 	}
 	var data CreateFile
-	json.Unmarshal(payload, &data)
+	if err := json.Unmarshal(payload, &data); err != nil {
+		fmt.Println("Error unmarshalling create file payload:", err)
+		s.sendResponse(false, "Error unmarshalling payload: "+err.Error(), nil)
+		return
+	}
 
 	localPath := filepath.Join(data.FilePath, data.FileName)
 	file, err := os.Create(localPath)
 	if err != nil {
+		fmt.Println("Error creating file:", err)
 		s.sendResponse(false, "Error creating file: "+err.Error(), nil)
 		return
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		fmt.Println("Error closing file:", err)
+		s.sendResponse(false, "Error closing file: "+err.Error(), nil)
+		return
+	}
 	s.sendResponse(true, "File created successfully", nil)
 }
 
@@ -237,21 +237,32 @@ func (s *Session) handleGetFile(payload json.RawMessage) {
 		FilePath string `json:"filePath"`
 	}
 	var data GetFile
-	json.Unmarshal(payload, &data)
+	if err := json.Unmarshal(payload, &data); err != nil {
+		fmt.Println("Error unmarshalling get file payload:", err)
+		s.sendResponse(false, "Error unmarshalling payload: "+err.Error(), nil)
+		return
+	}
 
 	if _, err := os.Stat(data.FilePath); os.IsNotExist(err) {
+		fmt.Println("File does not exist:", data.FilePath)
 		s.sendResponse(false, "File does not exist", nil)
 		return
 	}
 	content, err := os.ReadFile(data.FilePath)
 	if err != nil {
-		s.sendResponse(false, "Error reading file", nil)
+		fmt.Println("Error reading file:", err)
+		s.sendResponse(false, "Error reading file: "+err.Error(), nil)
 		return
 	}
 	type FileContent struct {
 		Content string `json:"content"`
 	}
-	resp, _ := json.Marshal(FileContent{Content: string(content)})
+	resp, err := json.Marshal(FileContent{Content: string(content)})
+	if err != nil {
+		fmt.Println("Error marshalling file content:", err)
+		s.sendResponse(false, "Error marshalling file content: "+err.Error(), nil)
+		return
+	}
 	s.sendResponse(true, "File retrieved successfully", resp)
 }
 
@@ -261,17 +272,22 @@ func (s *Session) handleUpdateFile(payload json.RawMessage) {
 		Content  string `json:"content"`
 	}
 	var data UpdateFile
-	json.Unmarshal(payload, &data)
-
-	decoded, err := base64.StdEncoding.DecodeString(data.Content)
-	if err != nil {
-		s.sendResponse(false, "Error decoding content", nil)
+	if err := json.Unmarshal(payload, &data); err != nil {
+		fmt.Println("Error unmarshalling update file payload:", err)
+		s.sendResponse(false, "Error unmarshalling payload: "+err.Error(), nil)
 		return
 	}
 
-	// Secure permissions
+	decoded, err := base64.StdEncoding.DecodeString(data.Content)
+	if err != nil {
+		fmt.Println("Error decoding content:", err)
+		s.sendResponse(false, "Error decoding content: "+err.Error(), nil)
+		return
+	}
+
 	if err := os.WriteFile(data.FilePath, decoded, 0644); err != nil {
-		s.sendResponse(false, "Error writing file", nil)
+		fmt.Println("Error writing file:", err)
+		s.sendResponse(false, "Error writing file: "+err.Error(), nil)
 		return
 	}
 	s.sendResponse(true, "File updated successfully", nil)
@@ -282,8 +298,17 @@ func (s *Session) handleDeleteFile(payload json.RawMessage) {
 		FileName string `json:"fileName"`
 		FilePath string `json:"filePath"`
 	}
-	json.Unmarshal(payload, &data)
-	os.Remove(filepath.Join(data.FilePath, data.FileName))
+	if err := json.Unmarshal(payload, &data); err != nil {
+		fmt.Println("Error unmarshalling delete file payload:", err)
+		s.sendResponse(false, "Error unmarshalling payload: "+err.Error(), nil)
+		return
+	}
+	filePath := filepath.Join(data.FilePath, data.FileName)
+	if err := os.Remove(filePath); err != nil {
+		fmt.Println("Error deleting file:", err)
+		s.sendResponse(false, "Error deleting file: "+err.Error(), nil)
+		return
+	}
 	s.sendResponse(true, "File deleted successfully", nil)
 }
 
@@ -292,8 +317,17 @@ func (s *Session) handleCreateFolder(payload json.RawMessage) {
 		FolderName string `json:"folderName"`
 		FolderPath string `json:"folderPath"`
 	}
-	json.Unmarshal(payload, &data)
-	os.MkdirAll(filepath.Join(data.FolderPath, data.FolderName), 0755)
+	if err := json.Unmarshal(payload, &data); err != nil {
+		fmt.Println("Error unmarshalling create folder payload:", err)
+		s.sendResponse(false, "Error unmarshalling payload: "+err.Error(), nil)
+		return
+	}
+	folderPath := filepath.Join(data.FolderPath, data.FolderName)
+	if err := os.MkdirAll(folderPath, 0755); err != nil {
+		fmt.Println("Error creating folder:", err)
+		s.sendResponse(false, "Error creating folder: "+err.Error(), nil)
+		return
+	}
 	s.sendResponse(true, "Folder created successfully", nil)
 }
 
@@ -301,8 +335,16 @@ func (s *Session) handleDeleteFolder(payload json.RawMessage) {
 	var data struct {
 		FolderPath string `json:"folderPath"`
 	}
-	json.Unmarshal(payload, &data)
-	os.RemoveAll(data.FolderPath)
+	if err := json.Unmarshal(payload, &data); err != nil {
+		fmt.Println("Error unmarshalling delete folder payload:", err)
+		s.sendResponse(false, "Error unmarshalling payload: "+err.Error(), nil)
+		return
+	}
+	if err := os.RemoveAll(data.FolderPath); err != nil {
+		fmt.Println("Error deleting folder:", err)
+		s.sendResponse(false, "Error deleting folder: "+err.Error(), nil)
+		return
+	}
 	s.sendResponse(true, "Folder deleted successfully", nil)
 }
 
@@ -318,7 +360,7 @@ func (s *Session) handleRequestTerminal(payload json.RawMessage) {
 	}
 
 	ctx := context.Background()
-	podName, err := s.K8sClient.WaitForPodByLabel(ctx, "cloud-ide", fmt.Sprintf("workspace=%s", s.WorkspaceID), 1*time.Second)
+	podName, err := s.K8sClient.WaitForPodByLabel(ctx, namespace, fmt.Sprintf("workspace=%s", s.WorkspaceID), 1*time.Second)
 	if err != nil {
 		s.sendResponse(false, "Error finding pod", nil)
 		return
@@ -326,7 +368,7 @@ func (s *Session) handleRequestTerminal(payload json.RawMessage) {
 
 	wsWriter := &WSWriter{Conn: s.Conn}
 	cmd := []string{"bin/bash", "-c", data.Instruction}
-	s.K8sClient.ExecToPod(ctx, "cloud-ide", podName, "shell", cmd, nil, wsWriter, wsWriter, false)
+	s.K8sClient.ExecToPod(ctx, namespace, podName, "shell", cmd, nil, wsWriter, wsWriter, false)
 }
 
 func (s *Session) handleGetTree(payload json.RawMessage) {
@@ -344,10 +386,8 @@ func (s *Session) handleGetTree(payload json.RawMessage) {
 		return
 	}
 
-	// Restore session state if empty (e.g. page refresh)
 	if s.WorkspaceID == "" {
 		s.WorkspaceID = targetId
-		// Ideally we restore s.K8sClient here too if needed
 	}
 
 	path := filepath.Join(os.Getenv("CACHE_DIR"), targetId)
@@ -356,7 +396,7 @@ func (s *Session) handleGetTree(payload json.RawMessage) {
 		s.sendResponse(false, "Error generating tree", nil)
 		return
 	}
-	
+
 	type getTreeResponse struct {
 		Tree FileNode `json:"tree"`
 	}
@@ -375,6 +415,11 @@ func generateTree(path string, name string) (FileNode, error) {
 	Tree.Path = path
 
 	for _, entry := range entries {
+		//ignore node_modules and .git:
+		if entry.Name() == "node_modules" || entry.Name() == ".git" {
+			continue
+		}
+
 		var child FileNode
 		if entry.IsDir() {
 			child, _ = generateTree(filepath.Join(path, entry.Name()), entry.Name())
@@ -386,4 +431,65 @@ func generateTree(path string, name string) (FileNode, error) {
 		Tree.Children = append(Tree.Children, child)
 	}
 	return Tree, nil
+}
+
+func (s *Session) handleStopWorkspace(payload json.RawMessage) {
+	var data struct {
+		WorkspaceId string `json:"workspaceId"`
+	}
+	json.Unmarshal(payload, &data)
+
+	// Determine ID
+	targetId := s.WorkspaceID
+	if targetId == "" {
+		targetId = data.WorkspaceId
+	}
+
+	if targetId == "" {
+		s.sendResponse(false, "Workspace ID missing", nil)
+		return
+	}
+
+	//cleanup function:
+	err := s.cleanup(targetId)
+	if err != nil{
+		fmt.Println("Error Cleaning Up: ",err)
+		s.sendResponse(false, "Error Cleaning Up:"+err.Error(),nil)
+	}
+
+	fmt.Printf("Workspace %s stopped and cleaned up.\n", targetId)
+	s.sendResponse(true, "Workspace stopped successfully", nil)
+}
+
+func (s *Session)cleanup(targetId string) error{
+	ctx := context.Background()
+	resourceName := fmt.Sprintf("shell-%s", targetId)
+
+	//delete resources:
+	if s.ProjectType == "react" || s.ProjectType == "nodejs" {
+		if err := s.K8sClient.DeleteResource(ctx, "Ingress", resourceName, namespace); err != nil {
+			fmt.Println("Error deleting ingress", err)
+			return err
+		}
+
+		if err := s.K8sClient.DeleteResource(ctx, "Service", resourceName, namespace); err != nil {
+			fmt.Println("Error deleting ingress", err)
+			return err
+		}
+	}
+
+	if err := s.K8sClient.DeleteResource(ctx, "Pod", resourceName, namespace); err != nil {
+		fmt.Println("Error deleting pod:", err)
+		return err
+
+	}
+
+	//delete Local Cache
+	cacheDir := filepath.Join(os.Getenv("CACHE_DIR"), targetId)
+	if err := os.RemoveAll(cacheDir); err != nil {
+		fmt.Println("Error deleting cache:", err)
+		return err
+	}
+
+	return nil
 }

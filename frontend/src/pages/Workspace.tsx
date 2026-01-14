@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { useParams, useLocation } from "react-router-dom";
+import { useParams, useLocation, useNavigate } from "react-router-dom";
 import { useSocket } from "../utils/Socket";
 import Folder from "../components/tree/Folder";
 import CodeEditor from "../components/editor/CodeEditor";
 import Xterm from "../components/terminal/Xterm";
 import { VscNewFile, VscNewFolder, VscRefresh } from "react-icons/vsc";
-import { FaExternalLinkAlt } from "react-icons/fa";
+import { FaExternalLinkAlt, FaStop } from "react-icons/fa"; // Added FaStop icon
 
 interface FileNode {
     name: string;
@@ -17,6 +17,7 @@ interface FileNode {
 export default function Workspace() {
     const { workspaceId } = useParams();
     const location = useLocation();
+    const navigate = useNavigate(); // For redirecting after stop
     const { sendMessage, subscribe } = useSocket();
     
     // Initial state from navigation, fallback to null
@@ -28,11 +29,9 @@ export default function Workspace() {
     const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
     const [creatingConfig, setCreatingConfig] = useState<{ parentPath: string; type: "file" | "folder" } | null>(null);
 
-    // Dynamic Preview URL (using nip.io for domain-less setup)
+    // Note: If you are using port 8080 for ingress, add :8080 to the end here.
     const previewUrl = `http://${workspaceId}-preview.127.0.0.1.nip.io`;
 
-    // 1. Check if this is a React Project based on file structure
-    // We look for 'index.html' or 'vite.config.js' in the root
     const isReactProject = fileTree?.children?.some(child => 
         child.name === "index.html" || 
         child.name === "vite.config.js" || 
@@ -97,6 +96,17 @@ export default function Workspace() {
         setTimeout(() => sendMessage("getTree", { workspaceId }), 200);
     };
 
+    // --- NEW: Stop Workspace Handler ---
+    const handleStop = () => {
+        if (confirm("Are you sure? This will delete all files and stop the container.")) {
+            sendMessage("stopWorkspace", { workspaceId });
+            // Redirect home after a short delay to allow backend to process
+            setTimeout(() => {
+                navigate("/"); 
+            }, 1000);
+        }
+    };
+
     return (
         <div className="h-screen flex flex-col bg-slate-950 text-slate-300 overflow-hidden">
             {/* TOP HEADER */}
@@ -105,18 +115,30 @@ export default function Workspace() {
                     <span className="font-mono text-sm text-slate-400">workspace: <span className="text-blue-400">{workspaceId}</span></span>
                 </div>
 
-                {isReactProject && (
-                    <a 
-                        href={previewUrl} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded flex items-center gap-2 transition-colors font-medium"
-                        title="Open Preview"
+                <div className="flex items-center gap-3">
+                    {isReactProject && (
+                        <a 
+                            href={previewUrl} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 py-1.5 rounded flex items-center gap-2 transition-colors font-medium"
+                            title="Open Preview"
+                        >
+                            <span>Preview</span>
+                            <FaExternalLinkAlt size={10} />
+                        </a>
+                    )}
+                    
+                    {/* STOP BUTTON */}
+                    <button 
+                        onClick={handleStop} 
+                        className="bg-red-600 hover:bg-red-500 text-white text-xs px-3 py-1.5 rounded flex items-center gap-2 transition-colors font-medium"
+                        title="Stop Workspace & Delete Files"
                     >
-                        <span>Preview</span>
-                        <FaExternalLinkAlt size={10} />
-                    </a>
-                )}
+                        <span>Stop</span>
+                        <FaStop size={10} />
+                    </button>
+                </div>
             </div>
             
             <div className="flex-1 flex overflow-hidden">

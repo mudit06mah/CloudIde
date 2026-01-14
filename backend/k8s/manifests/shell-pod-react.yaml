@@ -26,8 +26,13 @@ spec:
     volumeMounts:
     - name: workspace
       mountPath: /workspace
+    - name: node-modules
+      mountPath: /workspace/node_modules
   volumes:
   - name: workspace
     hostPath:
       path: /cache/{{WORKSPACE_ID}}
       type: Directory
+
+  - name: node-modules
+    emptyDir: {}
