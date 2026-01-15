@@ -1,11 +1,11 @@
 # CloudIDE
 <img width="1919" height="887" alt="cloudIDE" src="https://github.com/user-attachments/assets/21d7ecb9-22d6-42a3-9c0f-4afb9779465a" />
 A browser-based Integrated Development Environment that spins up isolated coding environments on Kubernetes.
-I built this project to dive deep into **Kubernetes internals**, **WebSockets**, and **System Design**.
+I built this project to dive deep into Kubernetes internals, WebSockets, and System Design.
 
 ## System Architecture
 
-<img width="3480" height="2232" alt="image" src="https://github.com/user-attachments/assets/86e4b258-78df-4312-8c64-1e652eb64235" />
+<img width="3480" height="1928" alt="image" src="https://github.com/user-attachments/assets/5a7b9aba-5ea5-4e26-a8c7-0a78ba5d1ebd" />
 
 ### How it works
 
